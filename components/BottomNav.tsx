@@ -1,57 +1,163 @@
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+type BottomNavActive = 'sites' | 'complaints';
 
 interface BottomNavProps {
-  active?: 'home' | 'explore' | 'dashboard';
+  active: BottomNavActive;
+  onTabChange?: (tab: BottomNavActive) => void;
 }
 
-export default function BottomNav({ active = 'home' }: BottomNavProps) {
-  const colorScheme = useColorScheme();
+export default function BottomNav({ active, onTabChange }: BottomNavProps) {
+  const colorScheme = useColorScheme() ?? 'light';
+  const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const tabs = [
-    { key: 'home', label: 'Home', route: '/(tabs)/home' },
-    { key: 'dashboard', label: 'Dashboard', route: '/(tabs)/index' },
-    { key: 'explore', label: 'Explore', route: '/(tabs)/explore' },
-  ] as const;
+  const styles = createStyles(colorScheme);
+  const bottomPadding = Math.max(insets.bottom - 1, 0);
+
+  // Slide-in + fade-in animation for the whole bar
+  const appear = useSharedValue(0);
+  useEffect(() => {
+    appear.value = withTiming(1, { duration: 300 });
+  }, [appear]);
+  const wrapperAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: appear.value,
+    transform: [{ translateY: (1 - appear.value) * 20 }],
+  }));
+
+  const handlePress = (target: BottomNavActive) => {
+    if (onTabChange) {
+      // If onTabChange callback is provided, use it for internal tab switching
+      onTabChange(target);
+    } else {
+      // Otherwise, use navigation
+      if (target === 'sites') {
+        router.replace('/(tabs)/sites');
+      } else if (target === 'complaints') {
+        router.replace('/(tabs)/sites');
+      }
+    }
+  };
 
   return (
-    <View style={[styles.container, { backgroundColor: Colors[colorScheme ?? 'dark'].card, borderColor: Colors[colorScheme ?? 'dark'].border }]}>
-      {tabs.map(tab => (
-        <TouchableOpacity
-          key={tab.key}
-          onPress={() => router.replace(tab.route)}
-          style={styles.item}
-          accessibilityRole="button"
-          accessibilityLabel={tab.label}
-        >
-          <Text style={{
-            color: active === tab.key ? Colors[colorScheme ?? 'dark'].tint : Colors[colorScheme ?? 'dark'].icon,
-            fontWeight: active === tab.key ? '700' as const : '500' as const,
-          }}>{tab.label}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
+    <Animated.View style={[styles.wrapper, { paddingBottom: bottomPadding }, wrapperAnimatedStyle]}>
+      <View style={styles.container}>
+        <NavItem
+          label="Sites"
+          iconName="business"
+          active={active === 'sites'}
+          onPress={() => handlePress('sites')}
+          colorScheme={colorScheme}
+        />
+        <NavItem
+          label="Complaints"
+          iconName="document-text"
+          active={active === 'complaints'}
+          onPress={() => handlePress('complaints')}
+          colorScheme={colorScheme}
+        />
+      </View>
+    </Animated.View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
+function NavItem({
+  label,
+  iconName,
+  active,
+  onPress,
+  colorScheme,
+}: {
+  label: string;
+  iconName: keyof typeof Ionicons.glyphMap;
+  active: boolean;
+  onPress: () => void;
+  colorScheme: 'light' | 'dark';
+}) {
+  const styles = createStyles(colorScheme);
+
+  // Animate active background and scale; also scale on press
+  const activeValue = useSharedValue(active ? 1 : 0);
+  const pressScale = useSharedValue(1);
+
+  useEffect(() => {
+    activeValue.value = withTiming(active ? 1 : 0, { duration: 220 });
+  }, [active, activeValue]);
+
+  const animatedItemStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ scale: pressScale.value * (1 + activeValue.value * 0.04) }],
+      backgroundColor: interpolateColor(
+        activeValue.value,
+        [0, 1],
+        ['rgba(0,0,0,0)', Colors[colorScheme].tint]
+      ),
+    };
+  });
+
+  return (
+    <Animated.View style={[styles.item, animatedItemStyle]}>
+      <Pressable
+        onPressIn={() => {
+          pressScale.value = withTiming(0.96, { duration: 80 });
+        }}
+        onPressOut={() => {
+          pressScale.value = withTiming(1, { duration: 120 });
+        }}
+        onPress={onPress}
+        style={{ alignItems: 'center', paddingVertical: 6, borderRadius: 16 }}
+        android_ripple={{ color: colorScheme === 'dark' ? '#2C2C2E' : '#E5E5E5' }}
+      >
+        <Ionicons
+          name={iconName}
+          size={14}
+          color={active ? '#FFFFFF' : Colors[colorScheme].icon}
+          style={{ marginBottom: 3 }}
+        />
+        <Text style={[styles.itemLabel, active && styles.itemLabelActive]}>{label}</Text>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+const createStyles = (colorScheme: 'light' | 'dark') => StyleSheet.create({
+  wrapper: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 64,
+    left: 16,
+    right: 16,
+    bottom: 16,
+  },
+  container: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    borderTopWidth: 1,
+    backgroundColor: Colors[colorScheme].card,
+    borderWidth: 1,
+    borderColor: Colors[colorScheme].border,
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
   },
   item: {
     flex: 1,
     alignItems: 'center',
+    paddingVertical: 4,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  itemLabel: {
+    fontSize: 11,
+    color: Colors[colorScheme].icon,
+    fontWeight: '600',
+  },
+  itemLabelActive: {
+    color: '#FFFFFF',
   },
 });

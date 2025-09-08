@@ -1,3 +1,4 @@
+import BottomNav from '@/components/BottomNav';
 import LiftCard from '@/components/LiftCard';
 import { Colors } from '@/constants/Colors';
 import { useUser } from '@/context/UserContext';
@@ -105,7 +106,7 @@ export default function HomeScreen() {
       />
       <View style={styles.headerContainer}>
         <View style={styles.headerTextContainer}>
-          <Text style={styles.title}>Your Lifts</Text>
+          <Text style={styles.title}>Sites</Text>
           <Text style={styles.subtitle}>View Your Installed Elevators</Text>
         </View>
         <TouchableOpacity onPress={() => router.push('/profile')}>
@@ -128,6 +129,9 @@ export default function HomeScreen() {
           contentContainerStyle={styles.listContentContainer}
         />
       )}
+
+      {/* Bottom Navigation */}
+      <BottomNav active="sites" />
     </View>
   );
 }

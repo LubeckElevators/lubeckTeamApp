@@ -12,7 +12,7 @@ import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, Sa
 export default function LoginScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
-  const { setUserProfile } = useUser();
+  const { login } = useUser();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -31,7 +31,7 @@ export default function LoginScreen() {
       showAlert('Login Error', 'Please enter both email and password.');
       return;
     }
-    
+
     setLoading(true);
     try {
       // Use the team/{emailID}/ path structure
@@ -40,7 +40,7 @@ export default function LoginScreen() {
 
       if (userDoc.exists()) {
         const userData = userDoc.data();
-        
+
         // Check if password field exists and matches
         if (userData.password && userData.password === password) {
           // Create user profile from Firestore data
@@ -52,8 +52,11 @@ export default function LoginScreen() {
             password: password,
             profileComplete: true,
           };
-          
-          setUserProfile(userProfile);
+
+          // Use the login function from UserContext which handles persistence
+          await login(email.trim(), password);
+
+          // Navigate to home screen
           router.replace('/(tabs)/home');
         } else {
           showAlert('Login Error', 'Invalid email or password.');
