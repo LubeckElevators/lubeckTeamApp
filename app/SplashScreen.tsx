@@ -18,7 +18,7 @@ export default function SplashScreen() {
       if (!isLoading) {
         // Check authentication status and redirect accordingly
         if (userProfile) {
-          router.replace('/(tabs)/home');
+          router.replace('/(tabs)/sites');
         } else {
           router.replace('/login');
         }

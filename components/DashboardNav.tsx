@@ -3,18 +3,17 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect } from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
-import Animated, { interpolateColor, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type BottomNavActive = 'sites' | 'complaints';
+type DashboardNavActive = 'sites' | 'complaints';
 
-interface BottomNavProps {
-  active: BottomNavActive;
-  onTabChange?: (tab: BottomNavActive) => void;
+interface DashboardNavProps {
+  active: DashboardNavActive;
 }
 
-export default function BottomNav({ active, onTabChange }: BottomNavProps) {
+export default function DashboardNav({ active }: DashboardNavProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -22,27 +21,21 @@ export default function BottomNav({ active, onTabChange }: BottomNavProps) {
   const styles = createStyles(colorScheme);
   const bottomPadding = Math.max(insets.bottom - 1, 0);
 
-  // Smooth slide-in animation for the whole bar
+  // Slide-in + fade-in animation for the whole bar
   const appear = useSharedValue(0);
   useEffect(() => {
-    appear.value = withSpring(1, { damping: 15, stiffness: 100 });
+    appear.value = withTiming(1, { duration: 300 });
   }, [appear]);
-
   const wrapperAnimatedStyle = useAnimatedStyle(() => ({
     opacity: appear.value,
-    transform: [{ translateY: (1 - appear.value) * 10 }],
+    transform: [{ translateY: (1 - appear.value) * 20 }],
   }));
 
-  const handlePress = (target: BottomNavActive) => {
-    console.log('🎯 BottomNav handlePress:', target, 'callback exists:', !!onTabChange);
-    if (onTabChange) {
-      // Use callback for internal tab switching (don't navigate)
-      console.log('✅ Using callback for:', target);
-      onTabChange(target);
-    } else {
-      // Fallback navigation if no callback provided
-      console.log('❌ No callback, navigating to sites');
+  const handlePress = (target: DashboardNavActive) => {
+    if (target === 'sites') {
       router.replace('/(tabs)/sites');
+    } else if (target === 'complaints') {
+      router.replace('/(tabs)/complaints');
     }
   };
 
@@ -83,16 +76,17 @@ function NavItem({
 }) {
   const styles = createStyles(colorScheme);
 
-  // Smooth active state animation
+  // Animate active background and scale; also scale on press
   const activeValue = useSharedValue(active ? 1 : 0);
+  const pressScale = useSharedValue(1);
 
   useEffect(() => {
-    activeValue.value = withSpring(active ? 1 : 0, { damping: 20, stiffness: 150 });
+    activeValue.value = withTiming(active ? 1 : 0, { duration: 220 });
   }, [active, activeValue]);
 
   const animatedItemStyle = useAnimatedStyle(() => {
     return {
-      transform: [{ scale: 1 + activeValue.value * 0.02 }],
+      transform: [{ scale: pressScale.value * (1 + activeValue.value * 0.04) }],
       backgroundColor: interpolateColor(
         activeValue.value,
         [0, 1],
@@ -101,33 +95,27 @@ function NavItem({
     };
   });
 
-  const animatedTextStyle = useAnimatedStyle(() => {
-    return {
-      color: interpolateColor(
-        activeValue.value,
-        [0, 1],
-        [Colors[colorScheme].icon, '#FFFFFF']
-      ),
-    };
-  });
-
   return (
     <Animated.View style={[styles.item, animatedItemStyle]}>
-      <TouchableOpacity
+      <Pressable
+        onPressIn={() => {
+          pressScale.value = withTiming(0.96, { duration: 80 });
+        }}
+        onPressOut={() => {
+          pressScale.value = withTiming(1, { duration: 120 });
+        }}
         onPress={onPress}
-        style={{ alignItems: 'center', paddingVertical: 6, borderRadius: 16 }}
-        activeOpacity={0.7}
+        style={{ alignItems: 'center', paddingVertical: 10, borderRadius: 16 }}
+        android_ripple={{ color: colorScheme === 'dark' ? '#2C2C2E' : '#E5E5E5' }}
       >
         <Ionicons
           name={iconName}
-          size={14}
+          size={16}
           color={active ? '#FFFFFF' : Colors[colorScheme].icon}
-          style={{ marginBottom: 3 }}
+          style={{ marginBottom: 6 }}
         />
-        <Animated.Text style={[styles.itemLabel, active && styles.itemLabelActive, animatedTextStyle]}>
-          {label}
-        </Animated.Text>
-      </TouchableOpacity>
+        <Text style={[styles.itemLabel, active && styles.itemLabelActive]}>{label}</Text>
+      </Pressable>
     </Animated.View>
   );
 }
@@ -135,9 +123,9 @@ function NavItem({
 const createStyles = (colorScheme: 'light' | 'dark') => StyleSheet.create({
   wrapper: {
     position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 16,
+    left: 20,
+    right: 20,
+    bottom: 20,
   },
   container: {
     flexDirection: 'row',
@@ -146,19 +134,19 @@ const createStyles = (colorScheme: 'light' | 'dark') => StyleSheet.create({
     backgroundColor: Colors[colorScheme].card,
     borderWidth: 1,
     borderColor: Colors[colorScheme].border,
-    borderRadius: 12,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
+    borderRadius: 14,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
   item: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 4,
-    borderRadius: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
     overflow: 'hidden',
   },
   itemLabel: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors[colorScheme].icon,
     fontWeight: '600',
   },

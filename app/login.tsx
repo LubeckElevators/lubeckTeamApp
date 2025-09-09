@@ -57,7 +57,7 @@ export default function LoginScreen() {
           await login(email.trim(), password);
 
           // Navigate to home screen
-          router.replace('/(tabs)/home');
+          router.replace('/(tabs)/sites');
         } else {
           showAlert('Login Error', 'Invalid email or password.');
         }

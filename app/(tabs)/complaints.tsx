@@ -2,25 +2,25 @@ import DashboardNav from '@/components/DashboardNav';
 import { Colors } from '@/constants/Colors';
 import { useUser } from '@/context/UserContext';
 import { db } from '@/firebase/firebaseConfig';
+import { useColorScheme } from '@/hooks/useColorScheme';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { collection, getDocs } from 'firebase/firestore';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Dimensions, FlatList, Image, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-export default function SitesScreen() {
+export default function ComplaintsScreen() {
   const { userProfile } = useUser();
-  const colorScheme = 'dark'; // Force dark mode
+  const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState(0);
-  const [imageError, setImageError] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [complaints, setComplaints] = useState<any[]>([]);
-  const [complaintsLoading, setComplaintsLoading] = useState(true);
   const [selectedComplaint, setSelectedComplaint] = useState<any>(null);
+  const [imageError, setImageError] = useState(false);
 
   const profileData = {
     aadhar: "5788 6888 9201",
@@ -34,15 +34,6 @@ export default function SitesScreen() {
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
-
-  // Create a stable callback using useMemo
-  const handleTabChange = useMemo(() => {
-    return (tab: 'sites' | 'complaints') => {
-      console.log('🔥 handleTabChange called with:', tab);
-      const newTabIndex = tab === 'sites' ? 0 : 1;
-      setActiveTab(newTabIndex);
-    };
-  }, []);
 
   // Helper function to convert Firestore timestamps recursively
   const convertTimestamps = (obj: any): any => {
@@ -74,7 +65,7 @@ export default function SitesScreen() {
   // Fetch complaints from Firestore
   const fetchComplaints = useCallback(async () => {
     try {
-      setComplaintsLoading(true);
+      setLoading(true);
 
       if (!userProfile?.email) {
         console.log('No user email found');
@@ -106,7 +97,7 @@ export default function SitesScreen() {
       console.error('Error fetching complaints:', error);
       setComplaints([]);
     } finally {
-      setComplaintsLoading(false);
+      setLoading(false);
     }
   }, [userProfile?.email]);
 
@@ -125,60 +116,6 @@ export default function SitesScreen() {
     });
   }, [router]);
 
-  // Group complaints by category
-  const complaintCategories = useMemo(() => {
-    const categories: ComplaintCategory[] = [
-      { id: 'urgent', title: 'Urgent Issues', icon: 'warning', color: '#FF3B30', complaints: [] },
-      { id: 'maintenance', title: 'Maintenance', icon: 'build', color: '#FF9500', complaints: [] },
-      { id: 'resolved', title: 'Resolved', icon: 'checkmark-circle', color: '#34C759', complaints: [] },
-      { id: 'scheduled', title: 'Scheduled', icon: 'calendar', color: '#007AFF', complaints: [] },
-    ];
-
-    complaints.forEach((complaint) => {
-      const status = complaint.status?.toLowerCase();
-      if (status === 'urgent' || status === 'critical' || complaint.urgency?.toLowerCase() === 'critical') {
-        categories[0].complaints.push(complaint);
-      } else if (status === 'pending' || status === 'in_progress') {
-        categories[1].complaints.push(complaint);
-      } else if (status === 'resolved' || status === 'completed') {
-        categories[2].complaints.push(complaint);
-      } else {
-        categories[3].complaints.push(complaint);
-      }
-    });
-
-    return categories;
-  }, [complaints]);
-
-  const getStatusColor = (status: string) => {
-    switch(status?.toLowerCase()) {
-      case 'resolved': return '#4CAF50';
-      case 'accepted': return '#2196F3';
-      case 'pending': return '#FF9800';
-      case 'rejected': return '#F44336';
-      default: return Colors[colorScheme ?? 'dark'].icon;
-    }
-  };
-
-  const getUrgencyColor = (urgency: string) => {
-    switch(urgency?.toLowerCase()) {
-      case 'critical': return '#F44336';
-      case 'high': return '#FF5722';
-      case 'medium': return '#FF9800';
-      case 'low': return '#4CAF50';
-      default: return Colors[colorScheme ?? 'dark'].icon;
-    }
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch(priority?.toLowerCase()) {
-      case 'critical': return '#F44336';
-      case 'high': return '#FF5722';
-      case 'medium': return '#FF9800';
-      case 'low': return '#4CAF50';
-      default: return Colors[colorScheme ?? 'dark'].icon;
-    }
-  };
 
   const styles = StyleSheet.create({
     container: {
@@ -332,44 +269,140 @@ export default function SitesScreen() {
       fontSize: 11,
       fontWeight: '600',
     },
-    categorySection: {
-      marginBottom: 24,
+    // Modal styles
+    modalContainer: {
+      flex: 1,
+      backgroundColor: Colors[colorScheme ?? 'dark'].background,
     },
-    categoryHeader: {
+    modalHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: 12,
-      paddingHorizontal: 24,
+      justifyContent: 'space-between',
+      paddingHorizontal: 20,
+      paddingVertical: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: Colors[colorScheme ?? 'dark'].border,
+      backgroundColor: Colors[colorScheme ?? 'dark'].card,
     },
-    categoryIcon: {
-      marginRight: 8,
+    closeButton: {
+      padding: 8,
     },
-    categoryTitle: {
+    modalTitle: {
       fontSize: 18,
-      fontWeight: '600',
+      fontWeight: 'bold',
       color: Colors[colorScheme ?? 'dark'].text,
       flex: 1,
+      textAlign: 'center',
     },
-    categoryBadge: {
-      backgroundColor: Colors[colorScheme ?? 'dark'].card,
+    modalContent: {
+      flex: 1,
+      padding: 16,
+    },
+    detailSection: {
       borderRadius: 12,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
+      padding: 16,
+      marginBottom: 16,
       borderWidth: 1,
       borderColor: Colors[colorScheme ?? 'dark'].border,
+      backgroundColor: Colors[colorScheme ?? 'dark'].card,
     },
-    categoryBadgeText: {
-      color: Colors[colorScheme ?? 'dark'].text,
+    detailRow: {
+      marginBottom: 12,
+    },
+    detailLabel: {
       fontSize: 12,
       fontWeight: '600',
-    },
-    timeAgo: {
-      fontSize: 12,
       color: Colors[colorScheme ?? 'dark'].icon,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginBottom: 4,
+    },
+    detailValue: {
+      fontSize: 14,
+      color: Colors[colorScheme ?? 'dark'].text,
+      lineHeight: 20,
+    },
+    liftImage: {
+      width: 80,
+      height: 60,
+      borderRadius: 8,
+      marginTop: 4,
+    },
+    messageItem: {
+      backgroundColor: 'rgba(0,0,0,0.03)',
+      borderRadius: 8,
+      padding: 12,
+      marginBottom: 8,
+    },
+    messageHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 6,
+    },
+    messageSender: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: Colors[colorScheme ?? 'dark'].tint,
+    },
+    messageTime: {
+      fontSize: 11,
+      color: Colors[colorScheme ?? 'dark'].icon,
+    },
+    messageText: {
+      fontSize: 13,
+      lineHeight: 18,
+      color: Colors[colorScheme ?? 'dark'].text,
+    },
+    attachmentSection: {
+      marginBottom: 12,
+    },
+    attachmentTitle: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: Colors[colorScheme ?? 'dark'].icon,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginBottom: 8,
+    },
+    photoScroll: {
+      marginTop: 8,
+    },
+    attachmentImage: {
+      width: 80,
+      height: 60,
+      borderRadius: 8,
+      marginRight: 8,
+    },
+    videoLink: {
+      fontSize: 12,
+      color: Colors[colorScheme ?? 'dark'].tint,
+      marginBottom: 4,
+      textDecorationLine: 'underline',
     },
   });
 
-  if (complaintsLoading) {
+  const getStatusColor = (status: string) => {
+    switch(status?.toLowerCase()) {
+      case 'resolved': return '#4CAF50';
+      case 'accepted': return '#2196F3';
+      case 'pending': return '#FF9800';
+      case 'rejected': return '#F44336';
+      default: return Colors[colorScheme ?? 'dark'].icon;
+    }
+  };
+
+  const getUrgencyColor = (urgency: string) => {
+    switch(urgency?.toLowerCase()) {
+      case 'critical': return '#F44336';
+      case 'high': return '#FF5722';
+      case 'medium': return '#FF9800';
+      case 'low': return '#4CAF50';
+      default: return Colors[colorScheme ?? 'dark'].icon;
+    }
+  };
+
+  if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors[colorScheme ?? 'dark'].tint} />
@@ -378,18 +411,18 @@ export default function SitesScreen() {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: 96 }]}>
       <StatusBar
         barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'}
         backgroundColor={Colors[colorScheme ?? 'dark'].background}
         translucent={false}
       />
 
-      {/* Header */}
+      {/* Header - Same as Sites */}
       <View style={styles.headerContainer}>
         <View style={styles.headerTextContainer}>
-          <Text style={styles.title}>Sites & Complaints</Text>
-          <Text style={styles.subtitle}>Manage Your Locations</Text>
+          <Text style={styles.title}>Complaints</Text>
+          <Text style={styles.subtitle}>Manage Service Requests</Text>
         </View>
         <TouchableOpacity onPress={() => router.push('/profile')}>
           <View style={styles.profileIcon}>
@@ -410,134 +443,69 @@ export default function SitesScreen() {
       </View>
 
       {/* Content */}
-      {activeTab === 0 ? (
-        // Sites Tab
+      {complaints.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Sites management coming soon...</Text>
+          <Text style={styles.emptyText}>No complaints reported at the moment.</Text>
         </View>
       ) : (
-        // Complaints Tab
-        complaints.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No complaints reported at the moment.</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={complaintCategories}
-            renderItem={({ item: category }) => (
-              <View style={styles.categorySection}>
-                <View style={styles.categoryHeader}>
-                  <MaterialIcons
-                    name={category.icon as any}
-                    size={20}
-                    color={category.color}
-                    style={styles.categoryIcon}
-                  />
-                  <Text style={styles.categoryTitle}>{category.title}</Text>
-                  <View style={styles.categoryBadge}>
-                    <Text style={styles.categoryBadgeText}>{category.complaints.length}</Text>
+        <FlatList
+          data={complaints}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.complaintCard}
+              onPress={() => handleComplaintPress(item)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.complaintHeader}>
+                <Text style={styles.complaintTitle}>
+                  {item.title || item.issueType || 'Untitled Complaint'}
+                </Text>
+                <View style={styles.complaintMeta}>
+                  <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
+                    <Text style={styles.statusText}>{item.status || 'Unknown'}</Text>
+                  </View>
+                  <Text style={styles.createdDate}>
+                    {typeof item.createdAt === 'string' ? item.createdAt : (item.createdAt?.toDate?.()?.toLocaleString() || 'Unknown date')}
+                  </Text>
+                </View>
+              </View>
+
+              <Text style={styles.complaintDescription} numberOfLines={2}>
+                {item.description || 'No description available'}
+              </Text>
+
+              <View style={styles.complaintFooter}>
+                <View style={styles.footerLeft}>
+                  <View style={styles.footerItem}>
+                    <MaterialIcons name="business" size={14} color={Colors[colorScheme ?? 'dark'].icon} />
+                    <Text style={styles.footerText}>
+                      {item.location?.buildingName || item.site || 'Unknown location'}
+                    </Text>
+                  </View>
+                  <View style={styles.footerItem}>
+                    <Ionicons name="construct" size={14} color={Colors[colorScheme ?? 'dark'].icon} />
+                    <Text style={styles.footerText}>
+                      {item.lift?.liftId || item.liftId || 'Unknown lift'}
+                    </Text>
                   </View>
                 </View>
-
-                {category.complaints.map((complaint) => (
-                  <TouchableOpacity
-                    key={complaint.id}
-                    style={styles.complaintCard}
-                    onPress={() => handleComplaintPress(complaint)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.complaintHeader}>
-                      <Text style={styles.complaintTitle}>
-                        {complaint.title || complaint.issueType || 'Untitled Complaint'}
-                      </Text>
-                      <View style={styles.complaintMeta}>
-                        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(complaint.status) }]}>
-                          <Text style={styles.statusText}>{complaint.status || 'Unknown'}</Text>
-                        </View>
-                        <Text style={styles.timeAgo}>
-                          {typeof complaint.createdAt === 'string' ? complaint.createdAt : (complaint.createdAt?.toDate?.()?.toLocaleString() || complaint.timeAgo || 'Unknown time')}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <Text style={styles.complaintDescription} numberOfLines={2}>
-                      {complaint.description || 'No description available'}
-                    </Text>
-
-                    <View style={styles.complaintFooter}>
-                      <View style={styles.footerLeft}>
-                        <View style={styles.footerItem}>
-                          <MaterialIcons name="business" size={14} color={Colors[colorScheme ?? 'dark'].icon} />
-                          <Text style={styles.footerText}>
-                            {complaint.location?.buildingName || complaint.site || 'Unknown location'}
-                          </Text>
-                        </View>
-                        <View style={styles.footerItem}>
-                          <Ionicons name="construct" size={14} color={Colors[colorScheme ?? 'dark'].icon} />
-                          <Text style={styles.footerText}>
-                            {complaint.lift?.liftId || complaint.liftId || 'Unknown lift'}
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={styles.footerRight}>
-                        <View style={[styles.urgencyBadge, { backgroundColor: getUrgencyColor(complaint.urgency || complaint.priority) }]}>
-                          <Text style={styles.urgencyText}>{complaint.urgency || complaint.priority || 'Medium'}</Text>
-                        </View>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                ))}
+                <View style={styles.footerRight}>
+                  <View style={[styles.urgencyBadge, { backgroundColor: getUrgencyColor(item.urgency || item.priority) }]}>
+                    <Text style={styles.urgencyText}>{item.urgency || item.priority || 'Medium'}</Text>
+                  </View>
+                </View>
               </View>
-            )}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContentContainer}
-          />
-        )
+            </TouchableOpacity>
+          )}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContentContainer}
+        />
       )}
 
       {/* Bottom Navigation */}
-      <DashboardNav
-        active={activeTab === 0 ? 'sites' : 'complaints'}
-        onTabChange={handleTabChange}
-      />
+      <DashboardNav active="complaints" />
+
     </View>
   );
-}
 
-interface Site {
-  id: string;
-  name?: string;
-  address?: string;
-  status?: string;
-  totalLifts?: number;
-}
-
-interface ComplaintCategory {
-  id: string;
-  title: string;
-  icon: string;
-  color: string;
-  complaints: any[];
-}
-
-interface Complaint {
-  id: string;
-  title?: string;
-  issueType?: string;
-  description?: string;
-  status?: string;
-  priority?: string;
-  urgency?: string;
-  location?: any;
-  lift?: any;
-  customer?: any;
-  createdAt?: string;
-  updatedAt?: string;
-  assignedAt?: string;
-  acceptedAt?: string;
-  messages?: any[];
-  photos?: string[];
-  videos?: string[];
-  voiceMessage?: string;
-  timeAgo?: string;
 }
