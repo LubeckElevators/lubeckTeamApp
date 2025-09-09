@@ -176,9 +176,17 @@ export default function ComplaintDetailScreen() {
         type: 'system'
       };
 
-      // Update status and add messages to both locations
+      // Get customer email for the customer path
+      const customerEmail = complaint.customer?.email || complaint.email;
+
+      if (!customerEmail) {
+        throw new Error('Customer email not found');
+      }
+
+      // Update status and add messages to all three locations
       const teamComplaintRef = doc(db, 'team', userProfile.email, 'complaints', complaintId);
       const globalComplaintRef = doc(db, 'Complaints', complaintId);
+      const customerComplaintRef = doc(db, 'Users', customerEmail, 'Complaints', complaintId);
 
       await Promise.all([
         updateDoc(teamComplaintRef, {
@@ -188,6 +196,12 @@ export default function ComplaintDetailScreen() {
           messages: arrayUnion(notesMessage, systemMessage)
         }),
         updateDoc(globalComplaintRef, {
+          status: 'Completed',
+          completedAt: Timestamp.now(),
+          completedBy: userProfile.name,
+          messages: arrayUnion(notesMessage, systemMessage)
+        }),
+        updateDoc(customerComplaintRef, {
           status: 'Completed',
           completedAt: Timestamp.now(),
           completedBy: userProfile.name,
@@ -349,16 +363,28 @@ export default function ComplaintDetailScreen() {
         return;
       }
 
-      // Create Firestore document references for both locations
+      // Get customer email for the customer path
+      const customerEmail = complaint.customer?.email || complaint.email;
+
+      if (!customerEmail) {
+        console.error('No customer email found');
+        return;
+      }
+
+      // Create Firestore document references for all three locations
       const teamComplaintRef = doc(db, 'team', teamMemberEmail, 'complaints', complaintId);
       const globalComplaintRef = doc(db, 'Complaints', complaintId);
+      const customerComplaintRef = doc(db, 'Users', customerEmail, 'Complaints', complaintId);
 
-      // Update both documents by adding the new message to the messages array
+      // Update all three documents by adding the new message to the messages array
       await Promise.all([
         updateDoc(teamComplaintRef, {
           messages: arrayUnion(newMessage)
         }),
         updateDoc(globalComplaintRef, {
+          messages: arrayUnion(newMessage)
+        }),
+        updateDoc(customerComplaintRef, {
           messages: arrayUnion(newMessage)
         })
       ]);
