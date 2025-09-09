@@ -3,7 +3,7 @@ import { Colors } from '@/constants/Colors';
 import { useUser } from '@/context/UserContext';
 import { db } from '@/firebase/firebaseConfig';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { collection, getDocs } from 'firebase/firestore';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -12,15 +12,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+type FilterType = 'all' | 'accepted' | 'completed';
+
 export default function ComplaintsScreen() {
   const { userProfile } = useUser();
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [complaints, setComplaints] = useState<any[]>([]);
+  const [allComplaints, setAllComplaints] = useState<any[]>([]);
   const [selectedComplaint, setSelectedComplaint] = useState<any>(null);
   const [imageError, setImageError] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<FilterType>('accepted');
 
   const profileData = {
     aadhar: "5788 6888 9201",
@@ -69,7 +72,7 @@ export default function ComplaintsScreen() {
 
       if (!userProfile?.email) {
         console.log('No user email found');
-        setComplaints([]);
+        setAllComplaints([]);
         return;
       }
 
@@ -92,10 +95,10 @@ export default function ComplaintsScreen() {
       // Sort by created date (newest first)
       complaintsData.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
-      setComplaints(complaintsData);
+      setAllComplaints(complaintsData);
     } catch (error) {
       console.error('Error fetching complaints:', error);
-      setComplaints([]);
+      setAllComplaints([]);
     } finally {
       setLoading(false);
     }
@@ -121,6 +124,44 @@ export default function ComplaintsScreen() {
     container: {
       flex: 1,
       backgroundColor: Colors[colorScheme ?? 'dark'].background,
+    },
+    filterContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 16,
+      backgroundColor: Colors[colorScheme ?? 'dark'].background,
+    },
+    filterChip: {
+      flex: 1,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: Colors[colorScheme ?? 'dark'].border,
+      backgroundColor: Colors[colorScheme ?? 'dark'].card,
+      marginHorizontal: 12,
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: 1,
+      },
+      shadowOpacity: colorScheme === 'dark' ? 0.1 : 0.05,
+      shadowRadius: 2,
+      elevation: 1,
+    },
+    filterChipActive: {
+      backgroundColor: Colors[colorScheme ?? 'dark'].tint,
+      borderColor: Colors[colorScheme ?? 'dark'].tint,
+    },
+    filterChipText: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: Colors[colorScheme ?? 'dark'].icon,
+      textAlign: 'center',
+    },
+    filterChipTextActive: {
+      color: '#FFFFFF',
     },
     headerContainer: {
       flexDirection: 'row',
@@ -193,81 +234,74 @@ export default function ComplaintsScreen() {
       paddingBottom: 24,
     },
     complaintCard: {
-      borderRadius: 12,
-      padding: 16,
-      marginBottom: 12,
-      borderWidth: 1,
+      borderRadius: 16,
+      padding: 20,
+      marginBottom: 16,
       backgroundColor: Colors[colorScheme ?? 'dark'].card,
+      borderWidth: 1,
       borderColor: Colors[colorScheme ?? 'dark'].border,
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: 2,
+      },
+      shadowOpacity: colorScheme === 'dark' ? 0.15 : 0.08,
+      shadowRadius: 4,
+      elevation: 3,
+      position: 'relative',
     },
     complaintHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'flex-start',
-      marginBottom: 8,
+      marginBottom: 12,
     },
     complaintTitle: {
-      fontSize: 16,
+      fontSize: 18,
       fontWeight: '600',
       color: Colors[colorScheme ?? 'dark'].text,
-      flex: 1,
-      marginRight: 8,
+      marginBottom: 8,
+      lineHeight: 24,
     },
-    complaintMeta: {
-      alignItems: 'flex-end',
-    },
-    statusBadge: {
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 12,
-      marginBottom: 4,
-    },
-    statusText: {
-      color: '#FFFFFF',
-      fontSize: 11,
-      fontWeight: '600',
-    },
-    createdDate: {
-      fontSize: 12,
-      color: Colors[colorScheme ?? 'dark'].icon,
+    statusIconCorner: {
+      position: 'absolute',
+      top: 16,
+      right: 16,
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      justifyContent: 'center',
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: 2,
+      },
+      shadowOpacity: 0.25,
+      shadowRadius: 3,
+      elevation: 3,
     },
     complaintDescription: {
-      fontSize: 14,
+      fontSize: 16,
       color: Colors[colorScheme ?? 'dark'].icon,
-      lineHeight: 20,
-      marginBottom: 12,
+      lineHeight: 24,
+      marginBottom: 16,
     },
     complaintFooter: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
       alignItems: 'center',
-    },
-    footerLeft: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    footerRight: {
-      alignItems: 'flex-end',
+      justifyContent: 'center',
+      paddingTop: 16,
+      borderTopWidth: 1,
+      borderTopColor: Colors[colorScheme ?? 'dark'].border,
     },
     footerItem: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginRight: 12,
+      marginHorizontal: 12,
     },
     footerText: {
-      fontSize: 12,
+      fontSize: 14,
       color: Colors[colorScheme ?? 'dark'].icon,
-      marginLeft: 4,
-    },
-    urgencyBadge: {
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 12,
-    },
-    urgencyText: {
-      color: '#FFFFFF',
-      fontSize: 11,
-      fontWeight: '600',
+      marginLeft: 6,
+      fontWeight: '500',
     },
     // Modal styles
     modalContainer: {
@@ -384,23 +418,37 @@ export default function ComplaintsScreen() {
 
   const getStatusColor = (status: string) => {
     switch(status?.toLowerCase()) {
-      case 'resolved': return '#4CAF50';
-      case 'accepted': return '#2196F3';
-      case 'pending': return '#FF9800';
-      case 'rejected': return '#F44336';
+      case 'completed':
+      case 'resolved': return '#4CAF50'; // Green
+      case 'accepted': return Colors[colorScheme ?? 'dark'].tint; // Golden (app's primary color)
+      case 'pending': return '#757575'; // Gray
+      case 'rejected': return '#F44336'; // Red (keeping for other statuses)
       default: return Colors[colorScheme ?? 'dark'].icon;
     }
   };
 
-  const getUrgencyColor = (urgency: string) => {
-    switch(urgency?.toLowerCase()) {
-      case 'critical': return '#F44336';
-      case 'high': return '#FF5722';
-      case 'medium': return '#FF9800';
-      case 'low': return '#4CAF50';
-      default: return Colors[colorScheme ?? 'dark'].icon;
+  const getStatusIcon = (status: string) => {
+    switch(status?.toLowerCase()) {
+      case 'completed':
+      case 'resolved': return 'checkmark-circle';
+      case 'accepted': return 'add-circle';
+      case 'pending': return 'time';
+      case 'rejected': return 'close-circle';
+      default: return 'help-circle';
     }
   };
+
+  // Get complaint counts by status
+  const getComplaintCount = (status: FilterType) => {
+    if (status === 'all') return allComplaints.length;
+    return allComplaints.filter(complaint => complaint.status?.toLowerCase() === status).length;
+  };
+
+  // Get filtered complaints based on active filter
+  const complaints = allComplaints.filter(complaint => {
+    if (activeFilter === 'all') return true;
+    return complaint.status?.toLowerCase() === activeFilter;
+  });
 
   if (loading) {
     return (
@@ -442,10 +490,34 @@ export default function ComplaintsScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Filter Chips */}
+      <View style={styles.filterContainer}>
+        <TouchableOpacity
+          style={[styles.filterChip, activeFilter === 'accepted' && styles.filterChipActive]}
+          onPress={() => setActiveFilter('accepted')}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.filterChipText, activeFilter === 'accepted' && styles.filterChipTextActive]}>
+            Accepted ({getComplaintCount('accepted')})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.filterChip, activeFilter === 'completed' && styles.filterChipActive]}
+          onPress={() => setActiveFilter('completed')}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.filterChipText, activeFilter === 'completed' && styles.filterChipTextActive]}>
+            Completed ({getComplaintCount('completed')})
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Content */}
       {complaints.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No complaints reported at the moment.</Text>
+          <Text style={styles.emptyText}>
+            No {activeFilter} complaints at the moment.
+          </Text>
         </View>
       ) : (
         <FlatList
@@ -456,18 +528,19 @@ export default function ComplaintsScreen() {
               onPress={() => handleComplaintPress(item)}
               activeOpacity={0.7}
             >
+              {/* Status Icon in Top-Right Corner */}
+              <View style={[styles.statusIconCorner, { backgroundColor: getStatusColor(item.status) }]}>
+                <Ionicons
+                  name={getStatusIcon(item.status)}
+                  size={18}
+                  color="#FFFFFF"
+                />
+              </View>
+
               <View style={styles.complaintHeader}>
                 <Text style={styles.complaintTitle}>
                   {item.title || item.issueType || 'Untitled Complaint'}
                 </Text>
-                <View style={styles.complaintMeta}>
-                  <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-                    <Text style={styles.statusText}>{item.status || 'Unknown'}</Text>
-                  </View>
-                  <Text style={styles.createdDate}>
-                    {typeof item.createdAt === 'string' ? item.createdAt : (item.createdAt?.toDate?.()?.toLocaleString() || 'Unknown date')}
-                  </Text>
-                </View>
               </View>
 
               <Text style={styles.complaintDescription} numberOfLines={2}>
@@ -475,24 +548,17 @@ export default function ComplaintsScreen() {
               </Text>
 
               <View style={styles.complaintFooter}>
-                <View style={styles.footerLeft}>
-                  <View style={styles.footerItem}>
-                    <MaterialIcons name="business" size={14} color={Colors[colorScheme ?? 'dark'].icon} />
-                    <Text style={styles.footerText}>
-                      {item.location?.buildingName || item.site || 'Unknown location'}
-                    </Text>
-                  </View>
-                  <View style={styles.footerItem}>
-                    <Ionicons name="construct" size={14} color={Colors[colorScheme ?? 'dark'].icon} />
-                    <Text style={styles.footerText}>
-                      {item.lift?.liftId || item.liftId || 'Unknown lift'}
-                    </Text>
-                  </View>
+                <View style={styles.footerItem}>
+                  <Ionicons name="person" size={16} color={Colors[colorScheme ?? 'dark'].icon} />
+                  <Text style={styles.footerText}>
+                    {item.customer?.fullName || 'Unknown customer'}
+                  </Text>
                 </View>
-                <View style={styles.footerRight}>
-                  <View style={[styles.urgencyBadge, { backgroundColor: getUrgencyColor(item.urgency || item.priority) }]}>
-                    <Text style={styles.urgencyText}>{item.urgency || item.priority || 'Medium'}</Text>
-                  </View>
+                <View style={styles.footerItem}>
+                  <Ionicons name="construct" size={16} color={Colors[colorScheme ?? 'dark'].icon} />
+                  <Text style={styles.footerText}>
+                    {item.lift?.liftId || item.liftId || 'Unknown lift'}
+                  </Text>
                 </View>
               </View>
             </TouchableOpacity>

@@ -16,14 +16,14 @@ export default function ProfileScreen() {
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(false);
 
-  // User profile data
+  // User profile data from context
   const profileData = {
-    aadhar: "5788 6888 9201",
-    email: "raghav.sachdeveloper@gmail.com",
-    name: "Raghav Sachdev",
-    phone: "8178648498",
-    profilepic: "https://media.licdn.com/dms/image/v2/D4D03AQEi1foHXK-r_w/profile-displayphoto-shrink_400_400/B4DZbzs07LGYAk-/0/1747845337681?e=1759363200&v=beta&t=kyEJJZPUJR6XlMw4mPpJa-q6zkI7tM0RW_QdmKKCORI",
-    role: "electrical_contractor"
+    name: userProfile?.name || 'Team Member',
+    email: userProfile?.email || '',
+    role: userProfile?.role || 'team_member',
+    aadhar: userProfile?.aadhar || "XXXX XXXX XXXX", // Default if not available
+    phone: userProfile?.phone || "XXXXXXXXXX", // Default if not available
+    profilepic: userProfile?.profilepic || null
   };
 
   const getInitials = (name: string) => {

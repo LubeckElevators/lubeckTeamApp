@@ -1,4 +1,6 @@
+import { db } from '@/firebase/firebaseConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { doc, getDoc } from 'firebase/firestore';
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 
 export interface UserProfile {
@@ -6,6 +8,9 @@ export interface UserProfile {
   name: string;
   email: string;
   role: string;
+  phone?: string;
+  aadhar?: string;
+  profilepic?: string;
   password?: string; // Make password optional for stored profile
   profileComplete: boolean;
 }
@@ -15,6 +20,9 @@ export interface StoredUserProfile {
   name: string;
   email: string;
   role: string;
+  phone?: string;
+  aadhar?: string;
+  profilepic?: string;
   profileComplete: boolean;
   loginTimestamp: number;
 }
@@ -46,6 +54,9 @@ const saveUserProfile = async (profile: UserProfile): Promise<void> => {
       name: profile.name,
       email: profile.email,
       role: profile.role,
+      phone: profile.phone,
+      aadhar: profile.aadhar,
+      profilepic: profile.profilepic,
       profileComplete: profile.profileComplete,
       loginTimestamp: Date.now(),
     };
@@ -75,6 +86,9 @@ const getUserProfile = async (): Promise<UserProfile | null> => {
       name: parsedProfile.name,
       email: parsedProfile.email,
       role: parsedProfile.role,
+      phone: parsedProfile.phone,
+      aadhar: parsedProfile.aadhar,
+      profilepic: parsedProfile.profilepic,
       profileComplete: parsedProfile.profileComplete,
     };
   } catch (error) {
@@ -96,13 +110,13 @@ export function UserProvider({ children }: UserProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing authentication on app startup
+    // Check for existing user profile on app startup
     const checkAuth = async () => {
       try {
         const storedProfile = await getUserProfile();
         setUserProfile(storedProfile);
       } catch (error) {
-        console.error('Auth check failed:', error);
+        console.error('Profile check failed:', error);
         setUserProfile(null);
       } finally {
         setIsLoading(false);
@@ -115,22 +129,36 @@ export function UserProvider({ children }: UserProviderProps) {
   const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Get user data from Firestore - document path is /team/{email}/
+      const userDocRef = doc(db, 'team', email);
+      const userDoc = await getDoc(userDocRef);
 
-      // Simulate successful login
-      const mockUser: UserProfile = {
-        id: '1',
-        name: 'John Doe',
-        email: email,
-        role: 'user',
-        password: password,
+      if (!userDoc.exists()) {
+        throw new Error('User profile not found in database');
+      }
+
+      const userData = userDoc.data();
+
+      // Simple password validation
+      if (userData.password && userData.password !== password) {
+        throw new Error('Invalid password');
+      }
+
+      // Create user profile from Firestore data with correct field mapping
+      const userProfile: UserProfile = {
+        id: email, // Use email as ID since that's the document ID
+        name: userData.name || 'Team Member',
+        email: userData.email || email,
+        role: userData.role || 'electrical_contractor',
+        phone: userData.phone,
+        aadhar: userData.aadhar,
+        profilepic: userData.profilepic,
         profileComplete: true,
       };
 
       // Save user profile to persistent storage
-      await saveUserProfile(mockUser);
-      setUserProfile(mockUser);
+      await saveUserProfile(userProfile);
+      setUserProfile(userProfile);
     } catch (error) {
       console.error('Login failed:', error);
       throw error;

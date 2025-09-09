@@ -152,30 +152,35 @@ export default function SitesScreen() {
 
   const getStatusColor = (status: string) => {
     switch(status?.toLowerCase()) {
-      case 'resolved': return '#4CAF50';
-      case 'accepted': return '#2196F3';
-      case 'pending': return '#FF9800';
-      case 'rejected': return '#F44336';
+      case 'completed':
+      case 'resolved': return '#4CAF50'; // Green
+      case 'accepted': return Colors[colorScheme ?? 'dark'].tint; // Golden (app's primary color)
+      case 'pending': return '#757575'; // Gray
+      case 'rejected': return '#F44336'; // Red (keeping for other statuses)
       default: return Colors[colorScheme ?? 'dark'].icon;
     }
   };
 
   const getUrgencyColor = (urgency: string) => {
     switch(urgency?.toLowerCase()) {
-      case 'critical': return '#F44336';
-      case 'high': return '#FF5722';
-      case 'medium': return '#FF9800';
-      case 'low': return '#4CAF50';
+      case 'emergency':
+      case 'critical': return '#F44336'; // Red
+      case 'high': return '#FF9800'; // Yellow/Orange
+      case 'normal':
+      case 'medium':
+      case 'low': return '#4CAF50'; // Green
       default: return Colors[colorScheme ?? 'dark'].icon;
     }
   };
 
   const getPriorityColor = (priority: string) => {
     switch(priority?.toLowerCase()) {
-      case 'critical': return '#F44336';
-      case 'high': return '#FF5722';
-      case 'medium': return '#FF9800';
-      case 'low': return '#4CAF50';
+      case 'emergency':
+      case 'critical': return '#F44336'; // Red
+      case 'high': return '#FF9800'; // Yellow/Orange
+      case 'normal':
+      case 'medium':
+      case 'low': return '#4CAF50'; // Green
       default: return Colors[colorScheme ?? 'dark'].icon;
     }
   };
@@ -412,10 +417,10 @@ export default function SitesScreen() {
       {/* Content */}
       {activeTab === 0 ? (
         // Sites Tab
-        <View style={styles.emptyContainer}>
+          <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>Sites management coming soon...</Text>
-        </View>
-      ) : (
+          </View>
+        ) : (
         // Complaints Tab
         complaints.length === 0 ? (
           <View style={styles.emptyContainer}>
@@ -498,7 +503,6 @@ export default function SitesScreen() {
       {/* Bottom Navigation */}
       <DashboardNav
         active={activeTab === 0 ? 'sites' : 'complaints'}
-        onTabChange={handleTabChange}
       />
     </View>
   );
