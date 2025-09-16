@@ -11,6 +11,109 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+// Site interface based on Firebase data structure
+interface AttendanceRecord {
+  date: string;
+  memberId: string;
+  memberName: string;
+  siteId: string;
+  status: 'Present' | 'Absent' | 'Unmarked';
+}
+
+interface CivilWork {
+  dualLoadHook: boolean;
+  entranceBeam: boolean;
+  frontWallElevation: boolean;
+  mrlWindow: boolean;
+  pitWaterProofing: boolean;
+  rccEntrance: boolean;
+  shaftPlaster: boolean;
+  status: string;
+  terraceStair: boolean;
+  whiteWash: boolean;
+}
+
+interface ElectricalWork {
+  earthingWire: boolean;
+  mcbBox: boolean;
+  status: string;
+  threePhaseConnection: boolean;
+}
+
+interface InstallationTasks {
+  [key: string]: string;
+}
+
+interface StairsWork {
+  status: string;
+}
+
+interface LiftSquareFolding {
+  status: string;
+}
+
+interface Site {
+  id: string;
+  siteId: string;
+  siteName: string;
+  ownerId: string;
+  ownerName: string;
+  ownerEmail: string;
+  ownerPhone: string;
+  ownerUserId: string;
+  liftId: string;
+  liftName: string;
+  liftType: string;
+  siteType: string;
+  siteAddress: string;
+  city: string;
+  state: string;
+  pincode: string;
+  floorsCount: number;
+  openingsCount: number;
+  flat: string;
+  googleLocation: string;
+  hasWarranty: string;
+  warrantyExpiryDate: string;
+  licence: string;
+  assignedDate: string;
+  operationsStartDate: string;
+  operationsEndDate: string;
+  currentStep: number;
+  completedSteps: number[];
+  createdAt: string;
+  updatedAt: string;
+  syncedAt: string;
+  syncedBy: string;
+  isDraft: boolean;
+  assignedTeamMembers: string[];
+  attendanceRecords: AttendanceRecord[];
+  additionalDocumentsUrls: string[];
+  amcProvider: string;
+  amcStartDate: string;
+  amcExpiryDate: string;
+  amcType: string;
+  buildingElevationUrl: string | null;
+  cabinModel: string;
+  civilWork: CivilWork;
+  copRfid: string;
+  copType: string;
+  doorFrameType: string;
+  electricalWork: ElectricalWork;
+  installationTasks: InstallationTasks;
+  liftDrawingUrl: string;
+  liftSquareFolding: LiftSquareFolding;
+  lopRfid: string;
+  lopType: string;
+  materialsList: any[];
+  ownerAadharUrl: string;
+  ownerPanUrl: string | null;
+  ownerPhotoUrl: string | null;
+  shaftSize: string;
+  siteMapUrl: string | null;
+  stairsWork: StairsWork;
+}
+
 export default function SitesScreen() {
   const { userProfile } = useUser();
   const colorScheme = 'dark'; // Force dark mode
@@ -21,6 +124,9 @@ export default function SitesScreen() {
   const [complaints, setComplaints] = useState<any[]>([]);
   const [complaintsLoading, setComplaintsLoading] = useState(true);
   const [selectedComplaint, setSelectedComplaint] = useState<any>(null);
+  const [sites, setSites] = useState<Site[]>([]);
+  const [sitesLoading, setSitesLoading] = useState(true);
+  const [selectedSite, setSelectedSite] = useState<Site | null>(null);
 
   const profileData = {
     aadhar: "5788 6888 9201",
@@ -109,6 +215,52 @@ export default function SitesScreen() {
       setComplaintsLoading(false);
     }
   }, [userProfile?.email]);
+
+  // Fetch sites from Firestore
+  const fetchSites = useCallback(async () => {
+    try {
+      setSitesLoading(true);
+
+      if (!userProfile?.email) {
+        console.log('No user email found');
+        setSites([]);
+        return;
+      }
+
+      // Get sites from /team/{TeamMemberID}/sites/{SiteOwnerEmail}
+      const sitesRef = collection(db, 'team', userProfile.email, 'sites');
+      const sitesSnapshot = await getDocs(sitesRef);
+
+      const sitesData: Site[] = [];
+      sitesSnapshot.forEach((doc) => {
+        const data = doc.data();
+        // Convert all timestamps recursively throughout the entire object
+        const convertedData = convertTimestamps(data);
+
+        sitesData.push({
+          id: doc.id,
+          ...convertedData,
+        } as Site);
+      });
+
+      // Sort by created date (newest first)
+      sitesData.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+      setSites(sitesData);
+    } catch (error) {
+      console.error('Error fetching sites:', error);
+      setSites([]);
+    } finally {
+      setSitesLoading(false);
+    }
+  }, [userProfile?.email]);
+
+  // Fetch sites on component mount and when user profile changes
+  useEffect(() => {
+    if (userProfile?.email) {
+      fetchSites();
+    }
+  }, [userProfile?.email, fetchSites]);
 
   // Fetch complaints on component mount and when user profile changes
   useEffect(() => {
@@ -372,6 +524,120 @@ export default function SitesScreen() {
       fontSize: 12,
       color: Colors[colorScheme ?? 'dark'].icon,
     },
+
+    // Sites Styles
+    sitesList: {
+      padding: 16,
+    },
+    siteCard: {
+      backgroundColor: Colors[colorScheme ?? 'dark'].background,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: Colors[colorScheme ?? 'dark'].border,
+    },
+    siteHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginBottom: 12,
+    },
+    siteInfo: {
+      flex: 1,
+    },
+    siteName: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: Colors[colorScheme ?? 'dark'].text,
+      marginBottom: 4,
+    },
+    siteAddress: {
+      fontSize: 14,
+      color: Colors[colorScheme ?? 'dark'].icon,
+    },
+    siteStatus: {
+      alignItems: 'flex-end',
+    },
+    liftId: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: Colors[colorScheme ?? 'dark'].tint,
+      marginBottom: 2,
+    },
+    siteType: {
+      fontSize: 12,
+      color: Colors[colorScheme ?? 'dark'].icon,
+      backgroundColor: Colors[colorScheme ?? 'dark'].border,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 8,
+    },
+    siteDetails: {
+      marginBottom: 12,
+    },
+    detailRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: 4,
+    },
+    detailLabel: {
+      fontSize: 14,
+      color: Colors[colorScheme ?? 'dark'].icon,
+      fontWeight: '500',
+    },
+    detailValue: {
+      fontSize: 14,
+      color: Colors[colorScheme ?? 'dark'].text,
+      fontWeight: '600',
+    },
+    progressSection: {
+      marginBottom: 12,
+    },
+    progressLabel: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: Colors[colorScheme ?? 'dark'].text,
+      marginBottom: 8,
+    },
+    progressBar: {
+      height: 6,
+      backgroundColor: Colors[colorScheme ?? 'dark'].border,
+      borderRadius: 3,
+      marginBottom: 4,
+    },
+    progressFill: {
+      height: '100%',
+      backgroundColor: Colors[colorScheme ?? 'dark'].tint,
+      borderRadius: 3,
+    },
+    progressText: {
+      fontSize: 12,
+      color: Colors[colorScheme ?? 'dark'].icon,
+      textAlign: 'center',
+    },
+    workStatus: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+    },
+    statusItem: {
+      alignItems: 'center',
+      flex: 1,
+    },
+    statusLabel: {
+      fontSize: 12,
+      color: Colors[colorScheme ?? 'dark'].icon,
+      marginBottom: 4,
+    },
+    statusValue: {
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    loadingText: {
+      marginTop: 12,
+      fontSize: 16,
+      color: Colors[colorScheme ?? 'dark'].icon,
+    },
   });
 
   if (complaintsLoading) {
@@ -393,7 +659,7 @@ export default function SitesScreen() {
       {/* Header */}
       <View style={styles.headerContainer}>
         <View style={styles.headerTextContainer}>
-          <Text style={styles.title}>Sites & Complaints</Text>
+          <Text style={styles.title}>Sites</Text>
           <Text style={styles.subtitle}>Manage Your Locations</Text>
         </View>
         <TouchableOpacity onPress={() => router.push('/profile')}>
@@ -417,15 +683,118 @@ export default function SitesScreen() {
       {/* Content */}
       {activeTab === 0 ? (
         // Sites Tab
+        sitesLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={Colors[colorScheme ?? 'dark'].tint} />
+            <Text style={styles.loadingText}>Loading sites...</Text>
+          </View>
+        ) : sites.length === 0 ? (
           <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Sites management coming soon...</Text>
+            <Text style={styles.emptyText}>No sites assigned at the moment.</Text>
           </View>
         ) : (
+          <FlatList
+            data={sites}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item: site }) => (
+              <TouchableOpacity
+                style={styles.siteCard}
+                onPress={() => router.push({
+                  pathname: '/site-detail',
+                  params: { site: JSON.stringify(site) }
+                })}
+                activeOpacity={0.7}
+              >
+      <View style={styles.siteHeader}>
+                  <View style={styles.siteInfo}>
+                    <Text style={styles.siteName}>{site.siteName || site.liftName}</Text>
+                    <Text style={styles.siteAddress}>
+                      {site.siteAddress}, {site.city}, {site.state}
+        </Text>
+        </View>
+                  <View style={styles.siteStatus}>
+                    <Text style={styles.liftId}>{site.liftId}</Text>
+                    <Text style={styles.siteType}>{site.siteType}</Text>
+      </View>
+      </View>
+
+                <View style={styles.siteDetails}>
+          <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Owner:</Text>
+                    <Text style={styles.detailValue}>{site.ownerName}</Text>
+          </View>
+          <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Phone:</Text>
+                    <Text style={styles.detailValue}>{site.ownerPhone}</Text>
+          </View>
+          <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Floors:</Text>
+                    <Text style={styles.detailValue}>{site.floorsCount}</Text>
+          </View>
+          <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Operations:</Text>
+                    <Text style={styles.detailValue}>
+                      {site.operationsStartDate} - {site.operationsEndDate}
+            </Text>
+          </View>
+        </View>
+
+                <View style={styles.progressSection}>
+                  <Text style={styles.progressLabel}>Progress</Text>
+                  <View style={styles.progressBar}>
+                    <View
+                      style={[
+                        styles.progressFill,
+                        { width: `${(site.currentStep / 7) * 100}%` }
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.progressText}>
+                    Step {site.currentStep} of 7
+              </Text>
+            </View>
+
+                <View style={styles.workStatus}>
+                  <View style={styles.statusItem}>
+                    <Text style={styles.statusLabel}>Civil Work:</Text>
+                    <Text style={[
+                      styles.statusValue,
+                      { color: site.civilWork.status === 'Complete' ? '#4CAF50' : '#FF9800' }
+                    ]}>
+                      {site.civilWork.status}
+              </Text>
+            </View>
+                  <View style={styles.statusItem}>
+                    <Text style={styles.statusLabel}>Electrical:</Text>
+                    <Text style={[
+                      styles.statusValue,
+                      { color: site.electricalWork.status === 'Complete' ? '#4CAF50' : '#FF9800' }
+                    ]}>
+                      {site.electricalWork.status}
+              </Text>
+            </View>
+                  <View style={styles.statusItem}>
+                    <Text style={styles.statusLabel}>Stairs:</Text>
+                    <Text style={[
+                      styles.statusValue,
+                      { color: site.stairsWork.status === 'Complete' ? '#4CAF50' : '#FF9800' }
+                    ]}>
+                      {site.stairsWork.status}
+                </Text>
+              </View>
+          </View>
+              </TouchableOpacity>
+            )}
+            contentContainerStyle={styles.sitesList}
+            showsVerticalScrollIndicator={false}
+          />
+        )
+      ) : (
         // Complaints Tab
         complaints.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>No complaints reported at the moment.</Text>
-          </View>
+            </View>
         ) : (
           <FlatList
             data={complaintCategories}
@@ -441,7 +810,7 @@ export default function SitesScreen() {
                   <Text style={styles.categoryTitle}>{category.title}</Text>
                   <View style={styles.categoryBadge}>
                     <Text style={styles.categoryBadgeText}>{category.complaints.length}</Text>
-                  </View>
+              </View>
                 </View>
 
                 {category.complaints.map((complaint) => (
@@ -454,20 +823,20 @@ export default function SitesScreen() {
                     <View style={styles.complaintHeader}>
                       <Text style={styles.complaintTitle}>
                         {complaint.title || complaint.issueType || 'Untitled Complaint'}
-                      </Text>
+                  </Text>
                       <View style={styles.complaintMeta}>
                         <View style={[styles.statusBadge, { backgroundColor: getStatusColor(complaint.status) }]}>
                           <Text style={styles.statusText}>{complaint.status || 'Unknown'}</Text>
-                        </View>
+                </View>
                         <Text style={styles.timeAgo}>
                           {typeof complaint.createdAt === 'string' ? complaint.createdAt : (complaint.createdAt?.toDate?.()?.toLocaleString() || complaint.timeAgo || 'Unknown time')}
-                        </Text>
-                      </View>
-                    </View>
+                  </Text>
+                </View>
+          </View>
 
                     <Text style={styles.complaintDescription} numberOfLines={2}>
                       {complaint.description || 'No description available'}
-                    </Text>
+            </Text>
 
                     <View style={styles.complaintFooter}>
                       <View style={styles.footerLeft}>
@@ -475,25 +844,25 @@ export default function SitesScreen() {
                           <MaterialIcons name="business" size={14} color={Colors[colorScheme ?? 'dark'].icon} />
                           <Text style={styles.footerText}>
                             {complaint.location?.buildingName || complaint.site || 'Unknown location'}
-                          </Text>
-                        </View>
+              </Text>
+            </View>
                         <View style={styles.footerItem}>
                           <Ionicons name="construct" size={14} color={Colors[colorScheme ?? 'dark'].icon} />
                           <Text style={styles.footerText}>
                             {complaint.lift?.liftId || complaint.liftId || 'Unknown lift'}
-                          </Text>
-                        </View>
-                      </View>
+              </Text>
+            </View>
+            </View>
                       <View style={styles.footerRight}>
                         <View style={[styles.urgencyBadge, { backgroundColor: getUrgencyColor(complaint.urgency || complaint.priority) }]}>
                           <Text style={styles.urgencyText}>{complaint.urgency || complaint.priority || 'Medium'}</Text>
-                        </View>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                ))}
+          </View>
+                </View>
               </View>
-            )}
+                  </TouchableOpacity>
+            ))}
+          </View>
+        )}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContentContainer}
           />
@@ -508,13 +877,6 @@ export default function SitesScreen() {
   );
 }
 
-interface Site {
-  id: string;
-  name?: string;
-  address?: string;
-  status?: string;
-  totalLifts?: number;
-}
 
 interface ComplaintCategory {
   id: string;

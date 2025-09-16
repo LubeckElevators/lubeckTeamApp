@@ -8,6 +8,7 @@
     "scheme": "lubeckteam",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#1C1C1E",
+    "sdkVersion": "54.0.0",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
@@ -37,7 +38,9 @@
           "resizeMode": "contain",
           "backgroundColor": "#1C1C1E"
         }
-      ]
+      ],
+      "expo-font",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
