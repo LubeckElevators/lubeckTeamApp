@@ -28,6 +28,24 @@ export default function TabLayout() {
           headerShown: false,
         }}
       />
+      <Stack.Screen
+        name="site-detail"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="dashboard"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="explore"
+        options={{
+          headerShown: false,
+        }}
+      />
     </Stack>
   );
 }

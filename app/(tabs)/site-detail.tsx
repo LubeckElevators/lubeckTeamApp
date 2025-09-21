@@ -1,12 +1,182 @@
+import InstallationPlan from '@/components/InstallationPlan';
+import OrderDetails from '@/components/OrderDetails';
+import OwnerDetails from '@/components/OwnerDetails';
+import PreworkingStage from '@/components/PreworkingStage';
+import SiteDetails from '@/components/SiteDetails';
+import TechnicalDetails from '@/components/TechnicalDetails';
 import { Colors } from '@/constants/Colors';
 import { useUser } from '@/context/UserContext';
+import { db } from '@/firebase/firebaseConfig';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import React from 'react';
-import { Dimensions, Linking, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Dimensions, Linking, Modal, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Attendance Calendar Component
+const AttendanceCalendar: React.FC<{
+  attendanceRecords: AttendanceRecord[];
+  operationsStartDate: string;
+  operationsEndDate: string;
+}> = ({ attendanceRecords, operationsStartDate, operationsEndDate }) => {
+  const [currentMonth, setCurrentMonth] = React.useState(new Date());
+  const [attendanceMap, setAttendanceMap] = React.useState<Map<string, AttendanceRecord>>(new Map());
+
+  // Create attendance lookup map for quick access
+  React.useEffect(() => {
+    const map = new Map<string, AttendanceRecord>();
+    attendanceRecords.forEach(record => {
+      map.set(record.date, record);
+    });
+    setAttendanceMap(map);
+  }, [attendanceRecords]);
+
+  // Generate calendar days for the current month
+  const generateCalendarDays = () => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+
+    const firstDay = new Date(year, month, 1);
+    const startDate = new Date(firstDay);
+    startDate.setDate(startDate.getDate() - firstDay.getDay()); // Start from Sunday
+
+    const days = [];
+    const current = new Date(startDate);
+
+    // Generate 5 weeks (35 days) to fill the calendar grid
+    for (let i = 0; i < 36; i++) {
+      // Create date string in local timezone to avoid off-by-one errors
+      const dateString = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+
+      const dayData = {
+        date: new Date(current),
+        dateString: dateString,
+        isCurrentMonth: current.getMonth() === month,
+        isToday: current.toDateString() === new Date().toDateString(),
+        attendance: attendanceMap.get(dateString)
+      };
+      days.push(dayData);
+      current.setDate(current.getDate() + 1);
+    }
+
+    return days;
+  };
+
+  const calendarDays = generateCalendarDays();
+
+  // Navigate to previous/next month
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    setCurrentMonth(prev => {
+      const newDate = new Date(prev);
+      if (direction === 'prev') {
+        newDate.setMonth(newDate.getMonth() - 1);
+      } else {
+        newDate.setMonth(newDate.getMonth() + 1);
+      }
+      return newDate;
+    });
+  };
+
+  // Check if date is within operations period
+  const isWithinOperationsPeriod = (dateString: string) => {
+    if (!operationsStartDate || !operationsEndDate) return false;
+    const date = new Date(dateString);
+    const start = new Date(operationsStartDate);
+    const end = new Date(operationsEndDate);
+    return date >= start && date <= end;
+  };
+
+  return (
+    <View style={styles.calendarContainer}>
+      {/* Header with navigation */}
+      <View style={styles.calendarHeader}>
+        <TouchableOpacity
+          style={styles.navButton}
+          onPress={() => navigateMonth('prev')}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.navButtonText}>‹</Text>
+        </TouchableOpacity>
+        <Text style={styles.calendarTitle}>
+          {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+        </Text>
+        <TouchableOpacity
+          style={styles.navButton}
+          onPress={() => navigateMonth('next')}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.navButtonText}>›</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Day headers */}
+      <View style={styles.weekdaysContainer}>
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+          <Text key={day} style={styles.weekday}>{day}</Text>
+        ))}
+      </View>
+
+      {/* Calendar grid */}
+      <View style={styles.calendarGrid}>
+        {calendarDays.map((day, index) => {
+          const isWithinOps = day.isCurrentMonth && isWithinOperationsPeriod(day.dateString);
+
+          // Determine cell background based on attendance status first
+          let cellBackground = {};
+          if (day.attendance?.status === 'Present') {
+            cellBackground = styles.attendancePresentCell;
+          } else if (day.attendance?.status === 'Absent') {
+            cellBackground = styles.attendanceAbsentCell;
+          } else if (day.attendance?.status === 'Unmarked') {
+            // Apply faded green for Unmarked (operational) dates
+            cellBackground = styles.operationDayCell;
+          } else if (day.isCurrentMonth) {
+            cellBackground = styles.currentMonthCell;
+          } else {
+            cellBackground = styles.otherMonthCell;
+          }
+
+          const cellStyle = {
+            ...styles.calendarCell,
+            ...cellBackground,
+            ...(day.isToday ? styles.todayCell : {}),
+          };
+
+            return (
+            <View key={index} style={cellStyle}>
+              <Text style={[
+                styles.dayNumber,
+                (day.attendance?.status === 'Present' || day.attendance?.status === 'Absent') ?
+                styles.coloredCellText : {}
+              ]}>
+                {day.date.getDate()}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+
+      {/* Legend */}
+      <View style={styles.calendarLegend}>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, styles.attendancePresentCell]} />
+          <Text style={styles.legendText}>Present</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, styles.attendanceAbsentCell]} />
+          <Text style={styles.legendText}>Absent</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: '#DEB54B' }]} />
+          <Text style={styles.legendText}>Today</Text>
+        </View>
+      </View>
+    </View>
+  );
+};
 
 // Site interface based on Firebase data structure
 interface AttendanceRecord {
@@ -118,6 +288,29 @@ export default function SiteDetailScreen() {
   const { userProfile } = useUser();
   const { site: siteParam } = useLocalSearchParams();
   const [site, setSite] = React.useState<Site | null>(null);
+  const [attendanceModalVisible, setAttendanceModalVisible] = React.useState(false);
+  const [successModalVisible, setSuccessModalVisible] = React.useState(false);
+  const [lastMarkedStatus, setLastMarkedStatus] = React.useState<'Present' | 'Absent' | null>(null);
+
+  // Callback to handle materials list updates for immediate UI feedback
+  const handleMaterialsUpdate = (updatedMaterials: any[]) => {
+    if (site) {
+      setSite({
+        ...site,
+        materialsList: updatedMaterials
+      });
+    }
+  };
+
+  // Callback to handle quality check updates for immediate UI feedback
+  const handleQualityCheckUpdate = (updatedInstallationTasks: { [key: string]: string }) => {
+    if (site) {
+      setSite({
+        ...site,
+        installationTasks: updatedInstallationTasks
+      });
+    }
+  };
 
   React.useEffect(() => {
     if (siteParam) {
@@ -130,6 +323,40 @@ export default function SiteDetailScreen() {
       }
     }
   }, [siteParam, router]);
+
+  // Refresh site data when component mounts
+  React.useEffect(() => {
+    if (site && userProfile?.email) {
+      const refreshSiteData = async () => {
+        try {
+          // console.log('Refreshing site data from Firebase...');
+          const siteDocRef = doc(db, 'team', userProfile.email, 'sites', site.siteId || site.id);
+          const siteDoc = await getDoc(siteDocRef);
+
+          if (siteDoc.exists()) {
+            const freshData = siteDoc.data();
+            // console.log('Fresh Firebase data:', freshData);
+            // console.log('Attendance records:', freshData.attendanceRecords);
+
+            // Update site with fresh data
+            const updatedSite = {
+              ...site,
+              ...freshData,
+              attendanceRecords: freshData.attendanceRecords || []
+            };
+            setSite(updatedSite);
+            // console.log('Site updated with fresh data');
+          } else {
+            console.log('Site document not found in Firebase');
+          }
+        } catch (error) {
+          console.error('Error refreshing site data:', error);
+        }
+      };
+
+      refreshSiteData();
+    }
+  }, [site?.id, userProfile?.email]);
 
   const getStatusColor = (status: string) => {
     const statusLower = status?.toLowerCase();
@@ -147,20 +374,175 @@ export default function SiteDetailScreen() {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    try {
-      return new Date(dateString).toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      });
-    } catch {
-      return dateString;
-    }
-  };
 
   const openLocation = (url: string) => {
     Linking.openURL(url);
+  };
+
+  // Get today's date in YYYY-MM-DD format (local timezone)
+  const getTodayDate = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Check if today's attendance is unmarked
+  const isTodayUnmarked = () => {
+    if (!site || !userProfile || !userProfile.email) return false;
+
+    const todayDate = getTodayDate();
+    const userEmail = userProfile.email;
+    
+    // Try to find existing record by date and either memberId (email or username)
+    const todayRecord = site.attendanceRecords?.find(
+      record => {
+        return record.date === todayDate && (
+          record.memberId === userEmail || 
+          record.memberId === userProfile.name?.toLowerCase().replace(/\s+/g, '_') ||
+          record.memberId === userEmail.split('@')[0] ||
+          record.memberId.includes(userProfile.name?.split(' ')[0]?.toLowerCase() || '')
+        );
+      }
+    );
+    return !todayRecord || todayRecord.status === 'Unmarked';
+  };
+
+  // Mark attendance for today
+  const markAttendance = async (status: 'Present' | 'Absent') => {
+    if (!site || !userProfile) {
+      Alert.alert('Error', 'Site or user information not available');
+      return;
+    }
+
+    // Validate site ID
+    const siteId = site.siteId || site.id;
+    if (!siteId) {
+      Alert.alert('Error', 'Site ID not available');
+      return;
+    }
+
+    // Validate user email
+    const userEmail = userProfile.email;
+    if (!userEmail) {
+      Alert.alert('Error', 'User email not available');
+      return;
+    }
+
+    const todayDate = getTodayDate();
+
+    try {
+      // Update Firebase first
+      console.log('Updating attendance for site:', siteId, 'user:', userEmail);
+      const siteDocRef = doc(db, 'team', userEmail, 'sites', siteId);
+      const siteDoc = await getDoc(siteDocRef);
+
+      if (!siteDoc.exists()) {
+        console.error('Site document not found:', siteId);
+        Alert.alert('Error', 'Site document not found in database');
+        return;
+      }
+
+      const siteData = siteDoc.data();
+      console.log('Current site data:', siteData);
+
+      // Ensure attendanceRecords exists
+      const currentAttendanceRecords = Array.isArray(siteData?.attendanceRecords)
+        ? siteData.attendanceRecords
+        : [];
+      console.log('Current attendance records:', currentAttendanceRecords);
+
+      // Try to find existing record by date and either memberId (email or username)
+      const existingRecordIndex = currentAttendanceRecords.findIndex(
+        (record: AttendanceRecord) => {
+          return record.date === todayDate && (
+            record.memberId === userEmail || 
+            record.memberId === userProfile.name?.toLowerCase().replace(/\s+/g, '_') ||
+            record.memberId === userEmail.split('@')[0] ||
+            record.memberId.includes(userProfile.name?.split(' ')[0]?.toLowerCase() || '')
+          );
+        }
+      );
+
+      console.log('Existing record index for today:', existingRecordIndex);
+      console.log('Today date:', todayDate);
+      console.log('User email:', userEmail);
+      console.log('Looking for memberId matching:', userEmail, 'or', userProfile.name?.toLowerCase().replace(/\s+/g, '_'));
+
+      let updatedAttendanceRecords = [...currentAttendanceRecords];
+
+      if (existingRecordIndex !== -1) {
+        // Update existing record
+        console.log('Updating existing record at index:', existingRecordIndex);
+        updatedAttendanceRecords[existingRecordIndex] = {
+          ...updatedAttendanceRecords[existingRecordIndex],
+          status: status
+        };
+      } else {
+        // Create new record
+        console.log('Creating new record for today');
+        const newRecord: AttendanceRecord = {
+          date: todayDate,
+          memberId: userEmail,
+          memberName: userProfile.name || 'Unknown User',
+          siteId: siteId,
+          status: status
+        };
+        updatedAttendanceRecords.push(newRecord);
+      }
+
+      console.log('Updated attendance records:', updatedAttendanceRecords);
+
+      // Update Firebase
+      const updateData = {
+        attendanceRecords: updatedAttendanceRecords,
+        updatedAt: new Date().toISOString()
+      };
+
+      await updateDoc(siteDocRef, updateData);
+
+      console.log('Successfully updated attendance in Firebase');
+
+      // Update local state
+      const updatedSite = {
+        ...site,
+        attendanceRecords: updatedAttendanceRecords
+      };
+      setSite(updatedSite);
+
+      setAttendanceModalVisible(false);
+      setLastMarkedStatus(status);
+      setSuccessModalVisible(true);
+
+    } catch (error) {
+      console.error('Error updating attendance in Firebase:', error);
+      Alert.alert('Error', 'Failed to update attendance. Please check your connection and try again.');
+    }
+  };
+
+  // Calculate attendance statistics for the current user
+  const calculateAttendanceStats = () => {
+    if (!site || !site.attendanceRecords || !userProfile || !userProfile.email) {
+      return { totalDays: 0, present: 0, absent: 0, unmarked: 0 };
+    }
+
+    const userEmail = userProfile.email;
+    const currentUserRecords = site.attendanceRecords.filter(
+      (record: AttendanceRecord) => {
+        return record.memberId === userEmail ||
+               record.memberId === userProfile.name?.toLowerCase().replace(/\s+/g, '_') ||
+               record.memberId === userEmail.split('@')[0] ||
+               record.memberId.includes(userProfile.name?.split(' ')[0]?.toLowerCase() || '');
+      }
+    );
+
+    const totalDays = currentUserRecords.length;
+    const present = currentUserRecords.filter(record => record.status === 'Present').length;
+    const absent = currentUserRecords.filter(record => record.status === 'Absent').length;
+    const unmarked = currentUserRecords.filter(record => record.status === 'Unmarked').length;
+
+    return { totalDays, present, absent, unmarked };
   };
 
   if (!site) {
@@ -174,6 +556,8 @@ export default function SiteDetailScreen() {
   }
 
   return (
+    <>
+      {/* Main Screen Content */}
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="light-content" backgroundColor={Colors.dark.background} />
 
@@ -186,293 +570,289 @@ export default function SiteDetailScreen() {
           <Text style={styles.headerTitle}>{site.siteName || site.liftName}</Text>
           <Text style={styles.headerSubtitle}>{site.liftId}</Text>
         </View>
-        <TouchableOpacity style={styles.moreButton}>
-          <Ionicons name="ellipsis-vertical" size={24} color={Colors.dark.text} />
-        </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Add spacing after header */}
+        <View style={styles.headerSpacing} />
 
-        {/* Basic Information */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="information-circle" size={20} color={Colors.dark.tint} />
-            <Text style={styles.sectionTitle}>Basic Information</Text>
-          </View>
-          <View style={styles.infoGrid}>
-            <View style={styles.infoItem}>
-              <Text style={styles.infoLabel}>Site Type</Text>
-              <Text style={styles.infoValue}>{site.siteType}</Text>
+        <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+
+          {/* Owner Details */}
+          <OwnerDetails
+            ownerName={site.ownerName}
+            ownerPhone={site.ownerPhone}
+            ownerEmail={site.ownerEmail}
+            ownerAadharUrl={site.ownerAadharUrl || undefined}
+            ownerPanUrl={site.ownerPanUrl || undefined}
+            ownerPhotoUrl={site.ownerPhotoUrl || undefined}
+          />
+
+          {/* Site Details */}
+          <SiteDetails
+            liftName={site.liftName}
+            siteAddress={site.siteAddress}
+            flat={site.flat}
+            city={site.city}
+            state={site.state}
+            sitePinCode={site.pincode}
+            typeOfSite={site.siteType}
+            liftId={site.liftId}
+            siteGoogleLocation={site.googleLocation}
+            buildingElevationPhoto={site.buildingElevationUrl || undefined}
+          />
+
+          
+          {/* Preworking Stage */}
+          <PreworkingStage
+            siteId={site.siteId || site.id}
+            siteData={site}
+            userEmail={userProfile?.email || ''}
+            ownerEmail={(site as any).ownerEmail || undefined}
+          />
+
+          {/* Order Details */}
+          <OrderDetails
+            liftType={(site as any).liftType || undefined}
+            floorsCount={(site as any).floorsCount || undefined}
+            openingsCount={(site as any).openingsCount || undefined}
+            shaftSize={(site as any).shaftSize || undefined}
+            liftDrawingUrl={(site as any).liftDrawingUrl || undefined}
+            lopType={(site as any).lopType || undefined}
+            copType={(site as any).copType || undefined}
+            copRfid={(site as any).copRfid || undefined}
+            lopRfid={(site as any).lopRfid || undefined}
+            cabinModel={(site as any).cabinModel || undefined}
+            doorFrameType={(site as any).doorFrameType || undefined}
+            licence={(site as any).licence || undefined}
+            hasWarranty={(site as any).hasWarranty || undefined}
+            warrantyExpiryDate={(site as any).warrantyExpiryDate || undefined}
+            amcType={(site as any).amcType || undefined}
+            amcProvider={(site as any).amcProvider || undefined}
+            amcStartDate={(site as any).amcStartDate || undefined}
+            amcExpiryDate={(site as any).amcExpiryDate || undefined}
+          />
+
+
+
+
+
+
+
+          {/* Technical Details */}
+          <TechnicalDetails
+            operationsStartDate={(site as any).operationsStartDate || undefined}
+            operationsEndDate={(site as any).operationsEndDate || undefined}
+            siteMapUrl={(site as any).siteMapUrl || undefined}
+            additionalDocumentsUrls={(site as any).additionalDocumentsUrls || undefined}
+            materialsList={(site as any).materialsList || undefined}
+            userEmail={userProfile?.email || undefined}
+            siteId={site.siteId || site.id || undefined}
+            ownerEmail={(site as any).ownerEmail || undefined}
+            onMaterialsUpdate={handleMaterialsUpdate}
+          />
+
+          {/* Installation Plan */}
+          <InstallationPlan
+            installationTasks={(site as any).installationTasks || undefined}
+            userEmail={userProfile?.email || undefined}
+            siteId={site.siteId || site.id || undefined}
+            ownerEmail={(site as any).ownerEmail || undefined}
+            onQualityCheckUpdate={handleQualityCheckUpdate}
+          />
+
+          {/* Attendance Statistics */}
+          <View style={styles.attendanceCard}>
+            <Text style={styles.cardTitle}>Attendance</Text>
+
+            {/* Calendar */}
+            <AttendanceCalendar
+              attendanceRecords={site.attendanceRecords || []}
+              operationsStartDate={site.operationsStartDate}
+              operationsEndDate={site.operationsEndDate}
+            />
+
+            {/* Horizontal Stats */}
+            <View style={styles.attendanceStatsVertical}>
+              {/* Total Days */}
+              <View style={styles.attendanceStatVertical}>
+                <View style={[styles.attendanceStatIconVertical, styles.attendanceTotalIcon]}>
+                  <Ionicons name="calendar" size={20} color="#FFFFFF" />
+                </View>
+                <View style={styles.attendanceStatInfoVertical}>
+                  <Text style={styles.attendanceStatValueVertical}>{calculateAttendanceStats().totalDays}</Text>
+                  <Text style={styles.attendanceStatLabelVertical}>Total</Text>
+              </View>
             </View>
-            <View style={styles.infoItem}>
-              <Text style={styles.infoLabel}>Lift Type</Text>
-              <Text style={styles.infoValue}>{site.liftType}</Text>
+
+              {/* Present */}
+              <View style={styles.attendanceStatVertical}>
+                <View style={[styles.attendanceStatIconVertical, styles.attendancePresentIcon]}>
+                  <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                </View>
+                <View style={styles.attendanceStatInfoVertical}>
+                  <Text style={styles.attendanceStatValueVertical}>{calculateAttendanceStats().present}</Text>
+                  <Text style={styles.attendanceStatLabelVertical}>Present</Text>
+              </View>
             </View>
-            <View style={styles.infoItem}>
-              <Text style={styles.infoLabel}>Floors</Text>
-              <Text style={styles.infoValue}>{site.floorsCount}</Text>
-            </View>
-            <View style={styles.infoItem}>
-              <Text style={styles.infoLabel}>Openings</Text>
-              <Text style={styles.infoValue}>{site.openingsCount}</Text>
-            </View>
+
+              {/* Absent */}
+              <View style={styles.attendanceStatVertical}>
+                <View style={[styles.attendanceStatIconVertical, styles.attendanceAbsentIcon]}>
+                  <Ionicons name="close-circle" size={20} color="#FFFFFF" />
+                </View>
+                <View style={styles.attendanceStatInfoVertical}>
+                  <Text style={styles.attendanceStatValueVertical}>{calculateAttendanceStats().absent}</Text>
+                  <Text style={styles.attendanceStatLabelVertical}>Absent</Text>
           </View>
         </View>
 
-        {/* Owner Information */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="person" size={20} color={Colors.dark.tint} />
-            <Text style={styles.sectionTitle}>Owner Information</Text>
+              {/* Unmarked */}
+              <View style={styles.attendanceStatVertical}>
+                <View style={[styles.attendanceStatIconVertical, styles.attendanceUnmarkedIcon]}>
+                  <Ionicons name="remove-circle" size={20} color="#FFFFFF" />
           </View>
-          <View style={styles.ownerCard}>
-            <View style={styles.ownerInfo}>
-              <Text style={styles.ownerName}>{site.ownerName}</Text>
-              <Text style={styles.ownerId}>{site.ownerUserId}</Text>
-            </View>
-            <View style={styles.ownerContact}>
-              <TouchableOpacity style={styles.contactItem}>
-                <Ionicons name="call" size={16} color={Colors.dark.tint} />
-                <Text style={styles.contactText}>{site.ownerPhone}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.contactItem}>
-                <Ionicons name="mail" size={16} color={Colors.dark.tint} />
-                <Text style={styles.contactText}>{site.ownerEmail}</Text>
-              </TouchableOpacity>
-            </View>
+                <View style={styles.attendanceStatInfoVertical}>
+                  <Text style={styles.attendanceStatValueVertical}>{calculateAttendanceStats().unmarked}</Text>
+                  <Text style={styles.attendanceStatLabelVertical}>Unmarked</Text>
+              </View>
           </View>
         </View>
 
-        {/* Location */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="location" size={20} color={Colors.dark.tint} />
-            <Text style={styles.sectionTitle}>Location</Text>
-          </View>
-          <View style={styles.locationCard}>
-            <Text style={styles.addressText}>
-              {site.siteAddress}, {site.city}, {site.state} - {site.pincode}
-            </Text>
+            {/* Mark Attendance Button - Only show if unmarked */}
+            {isTodayUnmarked() && (
+              <View style={styles.attendanceButtonContainer}>
             <TouchableOpacity
-              style={styles.locationButton}
-              onPress={() => openLocation(site.googleLocation)}
+                  style={styles.attendanceButton}
+                  onPress={() => setAttendanceModalVisible(true)}
+                  activeOpacity={0.8}
             >
-              <Ionicons name="navigate" size={16} color={Colors.dark.tint} />
-              <Text style={styles.locationButtonText}>Open in Maps</Text>
+                  <Ionicons name="checkmark-circle" size={24} color="#FFFFFF" />
+                  <Text style={styles.attendanceButtonText}>Mark Attendance</Text>
             </TouchableOpacity>
           </View>
+            )}
         </View>
 
-        {/* Progress & Timeline */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="time" size={20} color={Colors.dark.tint} />
-            <Text style={styles.sectionTitle}>Progress & Timeline</Text>
+        {/* Complete Site Button */}
+        <View style={styles.completeSiteButtonContainer}>
+          <TouchableOpacity
+            style={styles.completeSiteButton}
+            onPress={() => {
+              // Handle complete site action here
+              console.log('Complete Site button pressed');
+            }}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="checkmark-done-circle" size={24} color={Colors.dark.text} />
+            <Text style={styles.completeSiteButtonText}>Complete Site</Text>
+          </TouchableOpacity>
           </View>
 
-          <View style={styles.progressCard}>
-            <View style={styles.progressHeader}>
-              <Text style={styles.progressTitle}>Installation Progress</Text>
-              <Text style={styles.progressStep}>Step {site.currentStep} of 7</Text>
-            </View>
-            <View style={styles.progressBar}>
-              <View
-                style={[
-                  styles.progressFill,
-                  { width: `${Math.min((site.currentStep / 7) * 100, 100)}%` }
-                ]}
-              />
-            </View>
-            <Text style={styles.progressPercent}>
-              {Math.min(Math.round((site.currentStep / 7) * 100), 100)}% Complete
+        </ScrollView>
+
+      {/* Enhanced Attendance Modal */}
+      <Modal
+        visible={attendanceModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setAttendanceModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.attendanceModal}>
+            {/* Modal Header with Icon */}
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleContainer}>
+                <View style={styles.modalIcon}>
+                  <Ionicons name="calendar" size={24} color={Colors.dark.tint} />
+                </View>
+                <Text style={styles.modalTitle}>Daily Attendance</Text>
+                </View>
+              <TouchableOpacity
+                onPress={() => setAttendanceModalVisible(false)}
+                style={styles.closeButton}
+                activeOpacity={0.6}
+              >
+                <Ionicons name="close" size={24} color={Colors.dark.icon} />
+              </TouchableOpacity>
+        </View>
+
+            {/* Today's Date */}
+            <View style={styles.dateContainer}>
+              <Text style={styles.dateLabel}>Today</Text>
+              <Text style={styles.dateValue}>
+                {new Date().toLocaleDateString('en-IN', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                })}
+              </Text>
+          </View>
+
+            {/* Subtitle */}
+            <Text style={styles.modalSubtitle}>Select your attendance status</Text>
+
+            {/* Minimal Attendance Options */}
+            <View style={styles.attendanceOptions}>
+              <TouchableOpacity
+                style={[styles.attendanceOption, styles.presentOption]}
+                onPress={() => markAttendance('Present')}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="checkmark-circle" size={32} color="#FFFFFF" />
+                <Text style={styles.attendanceOptionText}>Present</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.attendanceOption, styles.absentOption]}
+                onPress={() => markAttendance('Absent')}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="close-circle" size={32} color="#FFFFFF" />
+                <Text style={styles.attendanceOptionText}>Absent</Text>
+              </TouchableOpacity>
+          </View>
+
+            {/* Footer Note */}
+            <Text style={styles.footerNote}>
+              Your attendance helps us track project progress
             </Text>
-          </View>
+            </View>
+            </View>
+      </Modal>
 
-          <View style={styles.timelineCard}>
-            <Text style={styles.timelineTitle}>Key Dates</Text>
-            <View style={styles.timelineItem}>
-              <Text style={styles.timelineLabel}>Operations Start</Text>
-              <Text style={styles.timelineValue}>{formatDate(site.operationsStartDate)}</Text>
+      {/* Success Modal */}
+      <Modal
+        visible={successModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setSuccessModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.successModal}>
+            <View style={styles.successIconContainer}>
+              <Ionicons name="checkmark-circle" size={60} color="#4CAF50" />
             </View>
-            <View style={styles.timelineItem}>
-              <Text style={styles.timelineLabel}>Operations End</Text>
-              <Text style={styles.timelineValue}>{formatDate(site.operationsEndDate)}</Text>
-            </View>
-            <View style={styles.timelineItem}>
-              <Text style={styles.timelineLabel}>Assigned Date</Text>
-              <Text style={styles.timelineValue}>{formatDate(site.assignedDate)}</Text>
+            <Text style={styles.successTitle}>Attendance Marked!</Text>
+            <Text style={styles.successMessage}>
+              You have been marked as {lastMarkedStatus} for today
+            </Text>
+            <TouchableOpacity
+              style={styles.successButton}
+              onPress={() => setSuccessModalVisible(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.successButtonText}>Continue</Text>
+            </TouchableOpacity>
             </View>
           </View>
+      </Modal>
         </View>
-
-        {/* Work Status */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="construct" size={20} color={Colors.dark.tint} />
-            <Text style={styles.sectionTitle}>Work Status</Text>
-          </View>
-
-          <View style={styles.workStatusGrid}>
-            <View style={styles.workStatusCard}>
-              <View style={styles.workStatusHeader}>
-                <Text style={styles.workStatusTitle}>Civil Work</Text>
-                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(site.civilWork?.status) }]}>
-                  <Text style={styles.statusText}>{site.civilWork?.status || 'Unknown'}</Text>
-                </View>
-              </View>
-              <View style={styles.workDetails}>
-                <Text style={styles.workDetail}>RCC Entrance: {(site.civilWork?.rccEntrance) ? '✓' : '✗'}</Text>
-                <Text style={styles.workDetail}>Shaft Plaster: {(site.civilWork?.shaftPlaster) ? '✓' : '✗'}</Text>
-                <Text style={styles.workDetail}>Front Wall: {(site.civilWork?.frontWallElevation) ? '✓' : '✗'}</Text>
-                <Text style={styles.workDetail}>Water Proofing: {(site.civilWork?.pitWaterProofing) ? '✓' : '✗'}</Text>
-              </View>
-            </View>
-
-            <View style={styles.workStatusCard}>
-              <View style={styles.workStatusHeader}>
-                <Text style={styles.workStatusTitle}>Electrical Work</Text>
-                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(site.electricalWork?.status) }]}>
-                  <Text style={styles.statusText}>{site.electricalWork?.status || 'Unknown'}</Text>
-                </View>
-              </View>
-              <View style={styles.workDetails}>
-                <Text style={styles.workDetail}>MCB Box: {(site.electricalWork?.mcbBox) ? '✓' : '✗'}</Text>
-                <Text style={styles.workDetail}>Earthing Wire: {(site.electricalWork?.earthingWire) ? '✓' : '✗'}</Text>
-                <Text style={styles.workDetail}>3-Phase Connection: {(site.electricalWork?.threePhaseConnection) ? '✓' : '✗'}</Text>
-              </View>
-            </View>
-
-            <View style={styles.workStatusCard}>
-              <View style={styles.workStatusHeader}>
-                <Text style={styles.workStatusTitle}>Stairs Work</Text>
-                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(site.stairsWork?.status) }]}>
-                  <Text style={styles.statusText}>{site.stairsWork?.status || 'Unknown'}</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Installation Tasks */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="list" size={20} color={Colors.dark.tint} />
-            <Text style={styles.sectionTitle}>Installation Tasks</Text>
-          </View>
-
-          <View style={styles.tasksGrid}>
-            {Object.entries(site.installationTasks || {}).map(([task, date]) => (
-              <View key={task} style={styles.taskItem}>
-                <Text style={styles.taskName}>{task.replace(/([A-Z])/g, ' $1').trim()}</Text>
-                <Text style={styles.taskDate}>{formatDate(date)}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {/* Team Members */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="people" size={20} color={Colors.dark.tint} />
-            <Text style={styles.sectionTitle}>Team Members</Text>
-          </View>
-
-          <View style={styles.teamList}>
-            {(site.assignedTeamMembers || []).map((member, index) => (
-              <View key={index} style={styles.teamMember}>
-                <Ionicons name="person-circle" size={24} color={Colors.dark.tint} />
-                <Text style={styles.teamMemberName}>{member}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {/* Attendance Records */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="calendar" size={20} color={Colors.dark.tint} />
-            <Text style={styles.sectionTitle}>Recent Attendance</Text>
-          </View>
-
-          <View style={styles.attendanceList}>
-            {(site.attendanceRecords || []).slice(0, 7).map((record, index) => (
-              <View key={index} style={styles.attendanceItem}>
-                <View style={styles.attendanceInfo}>
-                  <Text style={styles.attendanceMember}>{record.memberName}</Text>
-                  <Text style={styles.attendanceDate}>{formatDate(record.date)}</Text>
-                </View>
-                <View style={[styles.attendanceStatus, { backgroundColor: getAttendanceStatusColor(record.status) }]}>
-                  <Text style={styles.attendanceStatusText}>{record.status}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {/* Technical Specifications */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="settings" size={20} color={Colors.dark.tint} />
-            <Text style={styles.sectionTitle}>Technical Specifications</Text>
-          </View>
-
-          <View style={styles.specsGrid}>
-            <View style={styles.specItem}>
-              <Text style={styles.specLabel}>Cabin Model</Text>
-              <Text style={styles.specValue}>{site.cabinModel}</Text>
-            </View>
-            <View style={styles.specItem}>
-              <Text style={styles.specLabel}>Door Frame</Text>
-              <Text style={styles.specValue}>{site.doorFrameType}</Text>
-            </View>
-            <View style={styles.specItem}>
-              <Text style={styles.specLabel}>COP Type</Text>
-              <Text style={styles.specValue}>{site.copType}</Text>
-            </View>
-            <View style={styles.specItem}>
-              <Text style={styles.specLabel}>LOP Type</Text>
-              <Text style={styles.specValue}>{site.lopType}</Text>
-            </View>
-            <View style={styles.specItem}>
-              <Text style={styles.specLabel}>Shaft Size</Text>
-              <Text style={styles.specValue}>{site.shaftSize || 'Not specified'}</Text>
-            </View>
-            <View style={styles.specItem}>
-              <Text style={styles.specLabel}>Flat</Text>
-              <Text style={styles.specValue}>{site.flat}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Warranty & AMC */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="shield-checkmark" size={20} color={Colors.dark.tint} />
-            <Text style={styles.sectionTitle}>Warranty & AMC</Text>
-          </View>
-
-          <View style={styles.warrantyCard}>
-            <View style={styles.warrantyItem}>
-              <Text style={styles.warrantyLabel}>Warranty Status</Text>
-              <Text style={styles.warrantyValue}>{site.hasWarranty}</Text>
-            </View>
-            <View style={styles.warrantyItem}>
-              <Text style={styles.warrantyLabel}>Warranty Expiry</Text>
-              <Text style={styles.warrantyValue}>{formatDate(site.warrantyExpiryDate)}</Text>
-            </View>
-            <View style={styles.warrantyItem}>
-              <Text style={styles.warrantyLabel}>AMC Provider</Text>
-              <Text style={styles.warrantyValue}>{site.amcProvider || 'Not assigned'}</Text>
-            </View>
-            <View style={styles.warrantyItem}>
-              <Text style={styles.warrantyLabel}>AMC Type</Text>
-              <Text style={styles.warrantyValue}>{site.amcType || 'Not specified'}</Text>
-            </View>
-          </View>
-        </View>
-
-      </ScrollView>
-    </View>
+    </>
   );
 }
 
@@ -521,224 +901,428 @@ const styles = StyleSheet.create({
     padding: 8,
   },
 
+  headerSpacing: {
+    height: 20, // Add consistent spacing after header
+  },
+
   scrollView: {
     flex: 1,
+    paddingHorizontal: 20,
+  },
+  scrollContent: {
+    paddingBottom: 120, // Extra space for floating button (100px button + 20px margin)
   },
 
-  // Sections
-  section: {
-    marginBottom: 16,
-    paddingHorizontal: 16,
-  },
-  sectionHeader: {
+  // New minimal styles
+  quickStats: {
     flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 24,
+  },
+  statItem: {
     alignItems: 'center',
-    marginBottom: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    backgroundColor: Colors.dark.card,
+    borderRadius: 12,
+    minWidth: 80,
   },
-  sectionTitle: {
-    fontSize: 18,
+  statValue: {
+    fontSize: 24,
     fontWeight: 'bold',
-    color: Colors.dark.text,
-    marginLeft: 8,
-  },
-
-  // Basic Info
-  infoGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  infoItem: {
-    width: '50%',
-    marginBottom: 16,
-  },
-  infoLabel: {
-    fontSize: 12,
-    color: Colors.dark.icon,
+    color: Colors.dark.tint,
     marginBottom: 4,
   },
-  infoValue: {
-    fontSize: 16,
-    color: Colors.dark.text,
+  statLabel: {
+    fontSize: 12,
+    color: Colors.dark.icon,
     fontWeight: '600',
+    textTransform: 'uppercase',
   },
 
-  // Owner
-  ownerCard: {
-    backgroundColor: Colors.dark.card || '#1a1a1a',
+  // Cards
+  essentialCard: {
+    backgroundColor: Colors.dark.card,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  workStatusCard: {
+    backgroundColor: Colors.dark.card,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  tasksCard: {
+    backgroundColor: Colors.dark.card,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  teamCard: {
+    backgroundColor: Colors.dark.card,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  specsCard: {
+    backgroundColor: Colors.dark.card,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  warrantyCard: {
+    backgroundColor: Colors.dark.card,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+
+  // Attendance Card
+  attendanceCard: {
+    backgroundColor: Colors.dark.card,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  // Vertical attendance stats
+  attendanceStatsVertical: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  attendanceStatVertical: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  attendanceStatIconVertical: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  attendanceTotalIcon: {
+    backgroundColor: Colors.dark.tint,
+  },
+  attendancePresentIcon: {
+    backgroundColor: '#4CAF50',
+  },
+  attendanceAbsentIcon: {
+    backgroundColor: '#F44336',
+  },
+  attendanceUnmarkedIcon: {
+    backgroundColor: '#FF9800',
+  },
+  attendanceStatInfoVertical: {
+    alignItems: 'center',
+  },
+  attendanceStatValueVertical: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: Colors.dark.text,
+    marginBottom: 2,
+  },
+  attendanceStatLabelVertical: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: Colors.dark.icon,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  // Calendar styles
+  calendarContainer: {
+    backgroundColor: Colors.dark.card,
     borderRadius: 12,
     padding: 16,
+    marginBottom: 16,
+    width: '100%',
   },
-  ownerInfo: {
+  calendarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.dark.border,
   },
-  ownerName: {
+  calendarTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.dark.text,
+    flex: 1,
+    textAlign: 'center',
+  },
+  navButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.dark.card,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  navButtonText: {
+    fontSize: 16,
+    color: Colors.dark.text,
+    fontWeight: 'bold',
+  },
+  weekdaysContainer: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  weekday: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: Colors.dark.icon,
+    paddingVertical: 4,
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    backgroundColor: Colors.dark.background,
+    borderRadius: 8,
+    padding: 6,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    width: '100%',
+    justifyContent: 'space-between',
+  },
+  calendarCell: {
+    width: '15.2857%',
+    aspectRatio: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    margin: 1,
+    borderRadius: 4,
+    minHeight: 45,
+    position: 'relative',
+    
+  },
+  currentMonthCell: {
+    backgroundColor: Colors.dark.card,
+  },
+  otherMonthCell: {
+    backgroundColor: Colors.dark.background,
+    opacity: 0.3,
+  },
+  todayCell: {
+    borderWidth: 2,
+    borderRadius: 12,
+    borderColor: '#DEB54B',
+  },
+  operationDayCell: {
+    backgroundColor: 'rgba(47, 81, 47, 0.3)',
+  },
+  // Attendance status cell colors
+  attendancePresentCell: {
+    backgroundColor: '#1B5E20', // Very Dark Green for Present
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#4CAF50',
+  },
+  attendanceAbsentCell: {
+    backgroundColor: '#B71C1C', // Very Dark Red for Absent
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#F44336',
+  },
+  // Text color for colored cells
+  coloredCellText: {
+    color: '#FFFFFF', // White text for colored backgrounds
+  },
+  dayNumber: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: Colors.dark.text,
+  },
+  calendarLegend: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+    marginTop: 12,
+    padding: 8,
+    backgroundColor: Colors.dark.background,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  legendText: {
+    fontSize: 12,
+    color: Colors.dark.text,
+  },
+
+  // Card content
+  cardTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: Colors.dark.text,
+    marginBottom: 16,
   },
-  ownerId: {
-    fontSize: 14,
-    color: Colors.dark.icon,
-    marginTop: 4,
-  },
-  ownerContact: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  contactItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 0.48,
-    padding: 8,
-    backgroundColor: Colors.dark.background,
-    borderRadius: 8,
-  },
-  contactText: {
-    fontSize: 14,
-    color: Colors.dark.text,
-    marginLeft: 8,
-  },
-
-  // Location
-  locationCard: {
-    backgroundColor: Colors.dark.card || '#1a1a1a',
-    borderRadius: 12,
-    padding: 16,
-  },
-  addressText: {
-    fontSize: 16,
-    color: Colors.dark.text,
-    marginBottom: 12,
-    lineHeight: 22,
-  },
-  locationButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12,
-    backgroundColor: Colors.dark.tint + '20',
-    borderRadius: 8,
-  },
-  locationButtonText: {
-    fontSize: 14,
-    color: Colors.dark.tint,
-    marginLeft: 8,
-    fontWeight: '600',
-  },
-
-  // Progress
-  progressCard: {
-    backgroundColor: Colors.dark.card || '#1a1a1a',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-  },
-  progressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  progressTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.dark.text,
-  },
-  progressStep: {
-    fontSize: 14,
-    color: Colors.dark.tint,
-    fontWeight: '600',
-  },
-  progressBar: {
-    height: 8,
+  divider: {
+    height: 1,
     backgroundColor: Colors.dark.border,
-    borderRadius: 4,
+    marginVertical: 16,
+  },
+
+  // Essential card
+  cardRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 8,
   },
-  progressFill: {
-    height: '100%',
-    backgroundColor: Colors.dark.tint,
-    borderRadius: 4,
+  cardItem: {
+    flex: 1,
   },
-  progressPercent: {
-    fontSize: 14,
+  cardLabel: {
+    fontSize: 12,
     color: Colors.dark.icon,
-    textAlign: 'center',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    marginBottom: 4,
   },
-
-  // Timeline
-  timelineCard: {
-    backgroundColor: Colors.dark.card || '#1a1a1a',
-    borderRadius: 12,
-    padding: 16,
-  },
-  timelineTitle: {
+  cardValue: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.dark.text,
-    marginBottom: 12,
-  },
-  timelineItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  timelineLabel: {
-    fontSize: 14,
-    color: Colors.dark.icon,
-  },
-  timelineValue: {
-    fontSize: 14,
     color: Colors.dark.text,
     fontWeight: '600',
   },
-
-  // Work Status
-  workStatusGrid: {
+  contactButton: {
+    backgroundColor: Colors.dark.tint + '20',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  contactButtonText: {
+    fontSize: 14,
+    color: Colors.dark.tint,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 8,
+  },
+  locationText: {
+    fontSize: 14,
+    color: Colors.dark.icon,
+    marginLeft: 8,
+    flex: 1,
+  },
+  completeSiteButtonContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    paddingBottom: 30, // Extra bottom padding for better spacing
+  },
+  completeSiteButton: {
+    backgroundColor: '#4CAF50', // Green color for completion
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 4,
+    flexDirection: 'row' as const,
     gap: 12,
   },
-  workStatusCard: {
-    backgroundColor: Colors.dark.card || '#1a1a1a',
-    borderRadius: 12,
-    padding: 16,
+  completeSiteButtonText: {
+    color: Colors.dark.text,
+    fontSize: 18,
+    fontWeight: '600' as const,
   },
-  workStatusHeader: {
+
+  // Status
+  statusGrid: {
+    marginTop: 8,
+  },
+  statusRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+  },
+  statusItem: {
     alignItems: 'center',
-    marginBottom: 12,
+    flex: 1,
   },
-  workStatusTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.dark.text,
+  statusTitle: {
+    fontSize: 14,
+    color: Colors.dark.icon,
+    fontWeight: '600',
+    marginBottom: 8,
   },
-  statusBadge: {
+  miniBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
   },
-  statusText: {
-    fontSize: 12,
+  miniBadgeText: {
+    fontSize: 11,
     color: 'white',
     fontWeight: '600',
   },
-  workDetails: {
-    gap: 8,
-  },
-  workDetail: {
-    fontSize: 14,
-    color: Colors.dark.icon,
-  },
 
   // Tasks
-  tasksGrid: {
-    backgroundColor: Colors.dark.card || '#1a1a1a',
-    borderRadius: 12,
-    padding: 16,
-  },
-  taskItem: {
+  taskRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -752,110 +1336,311 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   taskDate: {
-    fontSize: 14,
+    fontSize: 12,
     color: Colors.dark.tint,
     fontWeight: '600',
   },
 
   // Team
-  teamList: {
-    backgroundColor: Colors.dark.card || '#1a1a1a',
-    borderRadius: 12,
-    padding: 16,
-  },
-  teamMember: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  teamMemberName: {
-    fontSize: 16,
-    color: Colors.dark.text,
-    marginLeft: 12,
-  },
-
-  // Attendance
-  attendanceList: {
-    backgroundColor: Colors.dark.card || '#1a1a1a',
-    borderRadius: 12,
-    padding: 16,
-  },
-  attendanceItem: {
+  teamRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.dark.border,
+    marginBottom: 16,
   },
-  attendanceInfo: {
-    flex: 1,
+  teamCount: {
+    alignItems: 'center',
   },
-  attendanceMember: {
+  teamCountValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.dark.tint,
+  },
+  teamCountLabel: {
+    fontSize: 12,
+    color: Colors.dark.icon,
+    textTransform: 'uppercase',
+  },
+  attendanceStats: {
+    alignItems: 'flex-end',
+  },
+  attendanceStat: {
     fontSize: 14,
     color: Colors.dark.text,
     fontWeight: '600',
   },
-  attendanceDate: {
+  teamMembersList: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  miniTeamMember: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  miniTeamName: {
+    fontSize: 14,
+    color: Colors.dark.text,
+    marginLeft: 6,
+  },
+  moreMembers: {
     fontSize: 12,
     color: Colors.dark.icon,
-  },
-  attendanceStatus: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  attendanceStatusText: {
-    fontSize: 12,
-    color: 'white',
-    fontWeight: '600',
+    fontStyle: 'italic',
   },
 
   // Specs
-  specsGrid: {
-    backgroundColor: Colors.dark.card || '#1a1a1a',
-    borderRadius: 12,
-    padding: 16,
-  },
-  specItem: {
+  specsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  specPair: {
+    flex: 1,
     alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.dark.border,
   },
-  specLabel: {
-    fontSize: 14,
+  specName: {
+    fontSize: 12,
     color: Colors.dark.icon,
+    textTransform: 'uppercase',
+    marginBottom: 4,
   },
-  specValue: {
+  specData: {
     fontSize: 14,
     color: Colors.dark.text,
     fontWeight: '600',
   },
 
   // Warranty
-  warrantyCard: {
-    backgroundColor: Colors.dark.card || '#1a1a1a',
-    borderRadius: 12,
-    padding: 16,
-  },
-  warrantyItem: {
+  warrantyRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.dark.border,
   },
-  warrantyLabel: {
-    fontSize: 14,
+  warrantyInfo: {
+    flex: 1,
+  },
+  warrantyStatus: {
+    fontSize: 16,
+    color: Colors.dark.text,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  warrantyExpiry: {
+    fontSize: 12,
     color: Colors.dark.icon,
   },
-  warrantyValue: {
+  amcInfo: {
+    alignItems: 'flex-end',
+  },
+  amcProvider: {
     fontSize: 14,
     color: Colors.dark.text,
     fontWeight: '600',
   },
+  amcType: {
+    fontSize: 12,
+    color: Colors.dark.icon,
+  },
+
+  // Inline attendance button
+  attendanceButtonContainer: {
+    marginTop: 20,
+    marginBottom: 10,
+    alignItems: 'center',
+  },
+  attendanceButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.tint, // App's golden theme color
+    paddingHorizontal: 40,
+    paddingVertical: 16,
+    borderRadius: 12,
+    shadowColor: Colors.dark.tint,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    minWidth: 300,
+    alignSelf: 'center',
+    justifyContent: 'center',
+  },
+  attendanceButtonText: {
+    color: '#FFFFFF', // Black text for better contrast on golden background
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginLeft: 8,
+  },
+
+  // Enhanced Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  attendanceModal: {
+    backgroundColor: Colors.dark.card,
+    borderRadius: 24,
+    padding: 24,
+    width: '100%',
+    maxWidth: 420,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  modalIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.dark.tint + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: Colors.dark.text,
+  },
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.dark.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dateContainer: {
+    backgroundColor: Colors.dark.background,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  dateLabel: {
+    fontSize: 12,
+    color: Colors.dark.icon,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  dateValue: {
+    fontSize: 16,
+    color: Colors.dark.text,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 16,
+    color: Colors.dark.icon,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  attendanceOptions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 16,
+    marginBottom: 24,
+  },
+  attendanceOption: {
+    flex: 1,
+    backgroundColor: Colors.dark.background,
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  attendanceOptionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 8,
+    color: '#FFFFFF',
+  },
+  presentOption: {
+    borderWidth: 0,
+    backgroundColor: '#4CAF50',
+  },
+  absentOption: {
+    borderWidth: 0,
+    backgroundColor: '#F44336',
+  },
+  footerNote: {
+    fontSize: 12,
+    color: Colors.dark.icon,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    opacity: 0.8,
+  },
+
+  // Success Modal
+  successModal: {
+    backgroundColor: Colors.dark.card,
+    borderRadius: 20,
+    padding: 30,
+    width: '90%',
+    maxWidth: 350,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  successIconContainer: {
+    marginBottom: 20,
+  },
+  successTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.dark.text,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  successMessage: {
+    fontSize: 16,
+    color: Colors.dark.icon,
+    textAlign: 'center',
+    marginBottom: 30,
+    lineHeight: 22,
+  },
+  successButton: {
+    backgroundColor: Colors.dark.tint,
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    borderRadius: 8,
+    shadowColor: Colors.dark.tint,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  successButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
 });
+
+
