@@ -9,9 +9,9 @@ import { useUser } from '@/context/UserContext';
 import { db } from '@/firebase/firebaseConfig';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc } from 'firebase/firestore';
 import React from 'react';
-import { Alert, Dimensions, Linking, Modal, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Dimensions, Linking, Modal, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -291,6 +291,10 @@ export default function SiteDetailScreen() {
   const [attendanceModalVisible, setAttendanceModalVisible] = React.useState(false);
   const [successModalVisible, setSuccessModalVisible] = React.useState(false);
   const [lastMarkedStatus, setLastMarkedStatus] = React.useState<'Present' | 'Absent' | null>(null);
+  const [completeSiteModalVisible, setCompleteSiteModalVisible] = React.useState(false);
+  const [userPassword, setUserPassword] = React.useState('');
+  const [isCreatingUser, setIsCreatingUser] = React.useState(false);
+  const [siteStatus, setSiteStatus] = React.useState<string | null>(null);
 
   // Callback to handle materials list updates for immediate UI feedback
   const handleMaterialsUpdate = (updatedMaterials: any[]) => {
@@ -345,6 +349,7 @@ export default function SiteDetailScreen() {
               attendanceRecords: freshData.attendanceRecords || []
             };
             setSite(updatedSite);
+            setSiteStatus(freshData.siteStatus || null);
             // console.log('Site updated with fresh data');
           } else {
             console.log('Site document not found in Firebase');
@@ -355,6 +360,43 @@ export default function SiteDetailScreen() {
       };
 
       refreshSiteData();
+    }
+  }, [site?.id, userProfile?.email]);
+
+  // Validate site status from Firebase when component mounts
+  React.useEffect(() => {
+    if (site && userProfile?.email) {
+      const validateSiteStatus = async () => {
+        try {
+          const ownerEmail = (site as any).ownerEmail;
+          if (!ownerEmail) return;
+
+          // Check both Firebase paths for site status
+          const teamSiteDocRef = doc(db, 'team', userProfile.email, 'sites', ownerEmail);
+          const ownerSiteDocRef = doc(db, 'sites', ownerEmail);
+
+          const [teamSiteDoc, ownerSiteDoc] = await Promise.all([
+            getDoc(teamSiteDocRef),
+            getDoc(ownerSiteDocRef)
+          ]);
+
+          let status = null;
+          
+          // Priority: Check team path first, then owner path
+          if (teamSiteDoc.exists()) {
+            status = teamSiteDoc.data()?.siteStatus;
+          } else if (ownerSiteDoc.exists()) {
+            status = ownerSiteDoc.data()?.siteStatus;
+          }
+
+          setSiteStatus(status || null);
+          console.log('Site status validated from Firebase:', status);
+        } catch (error) {
+          console.error('Error validating site status:', error);
+        }
+      };
+
+      validateSiteStatus();
     }
   }, [site?.id, userProfile?.email]);
 
@@ -377,6 +419,145 @@ export default function SiteDetailScreen() {
 
   const openLocation = (url: string) => {
     Linking.openURL(url);
+  };
+
+  // Get current date in YYYY/MM/DD format
+  const getCurrentDateFormatted = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}/${month}/${day}`;
+  };
+
+  // Get next lift index by checking existing lifts
+  const getNextLiftIndex = async (ownerEmail: string) => {
+    try {
+      const liftsCollectionRef = collection(db, 'Users', ownerEmail, 'Lifts');
+      const liftsSnapshot = await getDocs(liftsCollectionRef);
+      const existingLifts = liftsSnapshot.docs.map(doc => doc.id);
+      
+      let nextIndex = 1;
+      while (existingLifts.includes(`Lift${nextIndex}`)) {
+        nextIndex++;
+      }
+      
+      return nextIndex;
+    } catch (error) {
+      console.error('Error getting next lift index:', error);
+      return 1; // Default to 1 if error
+    }
+  };
+
+  // Complete site conversion
+  const handleCompleteSite = async () => {
+    if (!site || !userProfile?.email || !userPassword.trim()) {
+      Alert.alert('Error', 'Please enter a password');
+      return;
+    }
+
+    setIsCreatingUser(true);
+
+    try {
+      const ownerEmail = (site as any).ownerEmail;
+      if (!ownerEmail) {
+        throw new Error('Owner email not found');
+      }
+
+      // Step 1: Create Users/{ownerEmail} document
+      const addressLine2 = `${(site as any).city}, ${(site as any).state}, ${(site as any).pincode}`;
+      
+      const userDocData = {
+        address: {
+          addressLine1: (site as any).siteAddress || '',
+          addressLine2: addressLine2,
+          city: (site as any).city || '',
+          state: (site as any).state || '',
+          tower: '',
+          flatNumber: (site as any).flat || '',
+          pincode: (site as any).pincode || ''
+        },
+        email: ownerEmail,
+        fullName: (site as any).ownerName || '',
+        password: userPassword,
+        phone: (site as any).ownerPhone || '',
+        profileComplete: true,
+        userId: (site as any).ownerUserId || ''
+      };
+
+      await setDoc(doc(db, 'Users', ownerEmail), userDocData);
+
+      // Step 2: Get next lift index and create lift document
+      const nextLiftIndex = await getNextLiftIndex(ownerEmail);
+      const liftId = `Lift${nextLiftIndex}`;
+
+      const currentDate = getCurrentDateFormatted();
+      const fullAddress = `${(site as any).siteAddress}, ${(site as any).city}, ${(site as any).state}, ${(site as any).pincode}`;
+
+      const liftDocData = {
+        amcDetails: {
+          amcType: (site as any).amcType || '',
+          expiryDate: (site as any).amcExpiryDate || '',
+          isUnderAMC: true,
+          provider: 'Lubeck Elevators Pvt. Ltd.',
+          startDate: (site as any).amcStartDate || ''
+        },
+        installationDate: currentDate,
+        lastServiceDate: currentDate,
+        liftID: (site as any).liftId || '',
+        liftImage: 'https://lubeckelevators.com/_next/image?url=%2FGallery%2FIMPERIAL_GOLD_EDITION%2F1.jpg&w=1920&q=75',
+        liftName: (site as any).liftName || '',
+        location: {
+          address: fullAddress,
+          buildingName: (site as any).flat || '',
+          floorRange: (site as any).floorsCount || 0
+        },
+        nextServiceDue: 'N/A',
+        warrantyDetails: {
+          warrantyExpiredOn: (site as any).warrantyExpiryDate || '',
+          warrantyValid: true
+        }
+      };
+
+      await setDoc(doc(db, 'Users', ownerEmail, 'Lifts', liftId), liftDocData);
+
+      // Step 3: Update siteStatus in both paths
+      const updateData = {
+        siteStatus: 'Completed',
+        updatedAt: new Date()
+      };
+
+      const updatePromises = [];
+
+      // Update sites/{ownerEmail}
+      updatePromises.push(
+        updateDoc(doc(db, 'sites', ownerEmail), updateData)
+      );
+
+      // Update team/{userEmail}/sites/{ownerEmail}
+      if (userProfile.email) {
+        updatePromises.push(
+          updateDoc(doc(db, 'team', userProfile.email, 'sites', ownerEmail), updateData)
+        );
+      }
+
+      await Promise.all(updatePromises);
+
+      // Success
+      setCompleteSiteModalVisible(false);
+      setUserPassword('');
+      Alert.alert(
+        'Success!', 
+        'Site completed successfully! User account created and lift registered.',
+        [{ text: 'OK', onPress: () => router.back() }]
+      );
+
+    } catch (error) {
+      console.error('Error completing site:', error);
+      Alert.alert('Error', 'Failed to complete site conversion. Please try again.');
+    } finally {
+      setIsCreatingUser(false);
+    }
   };
 
   // Get today's date in YYYY-MM-DD format (local timezone)
@@ -681,23 +862,23 @@ export default function SiteDetailScreen() {
               <View style={styles.attendanceStatVertical}>
                 <View style={[styles.attendanceStatIconVertical, styles.attendanceTotalIcon]}>
                   <Ionicons name="calendar" size={20} color="#FFFFFF" />
-                </View>
+            </View>
                 <View style={styles.attendanceStatInfoVertical}>
                   <Text style={styles.attendanceStatValueVertical}>{calculateAttendanceStats().totalDays}</Text>
                   <Text style={styles.attendanceStatLabelVertical}>Total</Text>
-              </View>
+            </View>
             </View>
 
               {/* Present */}
               <View style={styles.attendanceStatVertical}>
                 <View style={[styles.attendanceStatIconVertical, styles.attendancePresentIcon]}>
                   <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
-                </View>
+          </View>
                 <View style={styles.attendanceStatInfoVertical}>
                   <Text style={styles.attendanceStatValueVertical}>{calculateAttendanceStats().present}</Text>
                   <Text style={styles.attendanceStatLabelVertical}>Present</Text>
-              </View>
-            </View>
+        </View>
+          </View>
 
               {/* Absent */}
               <View style={styles.attendanceStatVertical}>
@@ -707,20 +888,20 @@ export default function SiteDetailScreen() {
                 <View style={styles.attendanceStatInfoVertical}>
                   <Text style={styles.attendanceStatValueVertical}>{calculateAttendanceStats().absent}</Text>
                   <Text style={styles.attendanceStatLabelVertical}>Absent</Text>
-          </View>
-        </View>
+              </View>
+            </View>
 
               {/* Unmarked */}
               <View style={styles.attendanceStatVertical}>
                 <View style={[styles.attendanceStatIconVertical, styles.attendanceUnmarkedIcon]}>
                   <Ionicons name="remove-circle" size={20} color="#FFFFFF" />
-          </View>
+                </View>
                 <View style={styles.attendanceStatInfoVertical}>
                   <Text style={styles.attendanceStatValueVertical}>{calculateAttendanceStats().unmarked}</Text>
                   <Text style={styles.attendanceStatLabelVertical}>Unmarked</Text>
               </View>
-          </View>
-        </View>
+              </View>
+            </View>
 
             {/* Mark Attendance Button - Only show if unmarked */}
             {isTodayUnmarked() && (
@@ -733,24 +914,23 @@ export default function SiteDetailScreen() {
                   <Ionicons name="checkmark-circle" size={24} color="#FFFFFF" />
                   <Text style={styles.attendanceButtonText}>Mark Attendance</Text>
             </TouchableOpacity>
-          </View>
+                </View>
             )}
         </View>
 
-        {/* Complete Site Button */}
-        <View style={styles.completeSiteButtonContainer}>
-          <TouchableOpacity
-            style={styles.completeSiteButton}
-            onPress={() => {
-              // Handle complete site action here
-              console.log('Complete Site button pressed');
-            }}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="checkmark-done-circle" size={24} color={Colors.dark.text} />
-            <Text style={styles.completeSiteButtonText}>Complete Site</Text>
-          </TouchableOpacity>
+        {/* Complete Site Button - Only show if site is not completed */}
+        {siteStatus !== 'Completed' && (
+          <View style={styles.completeSiteButtonContainer}>
+            <TouchableOpacity
+              style={styles.completeSiteButton}
+              onPress={() => setCompleteSiteModalVisible(true)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="checkmark-done-circle" size={24} color={Colors.dark.text} />
+              <Text style={styles.completeSiteButtonText}>Complete Site</Text>
+            </TouchableOpacity>
           </View>
+        )}
 
         </ScrollView>
 
@@ -768,9 +948,9 @@ export default function SiteDetailScreen() {
               <View style={styles.modalTitleContainer}>
                 <View style={styles.modalIcon}>
                   <Ionicons name="calendar" size={24} color={Colors.dark.tint} />
-                </View>
+              </View>
                 <Text style={styles.modalTitle}>Daily Attendance</Text>
-                </View>
+          </View>
               <TouchableOpacity
                 onPress={() => setAttendanceModalVisible(false)}
                 style={styles.closeButton}
@@ -821,8 +1001,8 @@ export default function SiteDetailScreen() {
             <Text style={styles.footerNote}>
               Your attendance helps us track project progress
             </Text>
-            </View>
-            </View>
+                </View>
+                </View>
       </Modal>
 
       {/* Success Modal */}
@@ -836,7 +1016,7 @@ export default function SiteDetailScreen() {
           <View style={styles.successModal}>
             <View style={styles.successIconContainer}>
               <Ionicons name="checkmark-circle" size={60} color="#4CAF50" />
-            </View>
+              </View>
             <Text style={styles.successTitle}>Attendance Marked!</Text>
             <Text style={styles.successMessage}>
               You have been marked as {lastMarkedStatus} for today
@@ -848,10 +1028,84 @@ export default function SiteDetailScreen() {
             >
               <Text style={styles.successButtonText}>Continue</Text>
             </TouchableOpacity>
-            </View>
           </View>
-      </Modal>
         </View>
+      </Modal>
+
+      {/* Complete Site Modal */}
+      <Modal
+        visible={completeSiteModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setCompleteSiteModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.completeSiteModalContainer}>
+            {/* Header */}
+            <View style={styles.completeSiteModalHeader}>
+              <Text style={styles.completeSiteModalTitle}>Creating The User</Text>
+              <TouchableOpacity
+                onPress={() => setCompleteSiteModalVisible(false)}
+                style={styles.closeButton}
+              >
+                <Ionicons name="close" size={24} color={Colors.dark.text} />
+              </TouchableOpacity>
+          </View>
+
+            {/* Scrollable Content */}
+            <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
+              <View style={styles.completeSiteModalContent}>
+                {/* Email Field (Auto-filled, Read-only) */}
+                <View style={styles.inputContainer}>
+                  <Text style={styles.inputLabel}>Email (Auto Filled)</Text>
+                  <TextInput
+                    style={[styles.textInput, styles.readOnlyInput]}
+                    value={(site as any)?.ownerEmail || ''}
+                    editable={false}
+                    placeholder="Owner email will be auto-filled"
+                    placeholderTextColor={Colors.dark.icon}
+                  />
+        </View>
+
+                {/* Password Field */}
+                <View style={styles.inputContainer}>
+                  <Text style={styles.inputLabel}>Password</Text>
+                  <Text style={styles.inputHelper}>Ask The Team Member to ask user to fill this</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={userPassword}
+                    onChangeText={setUserPassword}
+                    placeholder="Enter password"
+                    placeholderTextColor={Colors.dark.icon}
+                    secureTextEntry={true}
+                  />
+          </View>
+
+                {/* Create User Button */}
+                <TouchableOpacity
+                  style={[styles.createUserButton, isCreatingUser && styles.disabledButton]}
+                  onPress={handleCompleteSite}
+                  disabled={isCreatingUser || !userPassword.trim()}
+                  activeOpacity={0.8}
+                >
+                  {isCreatingUser ? (
+                    <>
+                      <Ionicons name="sync" size={20} color="#FFFFFF" />
+                      <Text style={styles.createUserButtonText}>Creating User...</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Ionicons name="person-add" size={20} color="#FFFFFF" />
+                      <Text style={styles.createUserButtonText}>Create User & Complete Site</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+            </View>
+            </ScrollView>
+            </View>
+            </View>
+      </Modal>
+            </View>
     </>
   );
 }
@@ -1292,6 +1546,92 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
   },
 
+  // Complete Site Modal Styles
+  completeSiteModalContainer: {
+    backgroundColor: Colors.dark.card,
+    borderRadius: 16,
+    width: '90%' as const,
+    maxWidth: 380,
+    minHeight: 300,
+    maxHeight: '75%' as const,
+  },
+  completeSiteModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.dark.background,
+  },
+  completeSiteModalTitle: {
+    fontSize: 18,
+    fontWeight: '600' as const,
+    color: Colors.dark.text,
+    flex: 1,
+  },
+  modalScrollView: {
+    flexGrow: 1,
+  },
+  completeSiteModalContent: {
+    padding: 20,
+    paddingBottom: 30,
+  },
+  inputContainer: {
+    marginBottom: 24,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '500' as const,
+    color: Colors.dark.text,
+    marginBottom: 6,
+  },
+  inputHelper: {
+    fontSize: 11,
+    color: Colors.dark.icon,
+    marginBottom: 8,
+    lineHeight: 14,
+  },
+  textInput: {
+    backgroundColor: '#1E1E1E',
+    borderRadius: 8,
+    padding: 14,
+    fontSize: 16,
+    color: Colors.dark.text,
+    borderWidth: 1,
+    borderColor: '#333333',
+  },
+  readOnlyInput: {
+    backgroundColor: '#2A2A2A',
+    color: '#888888',
+    borderColor: '#444444',
+  },
+  createUserButton: {
+    backgroundColor: Colors.dark.tint,
+    borderRadius: 8,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+  },
+  createUserButtonText: {
+    color: '#000000',
+    fontSize: 16,
+    fontWeight: '600' as const,
+    marginLeft: 8,
+  },
+  disabledButton: {
+    opacity: 0.5,
+  },
+  closeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.dark.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   // Status
   statusGrid: {
     marginTop: 8,
@@ -1517,14 +1857,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
     color: Colors.dark.text,
-  },
-  closeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.dark.background,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   dateContainer: {
     backgroundColor: Colors.dark.background,

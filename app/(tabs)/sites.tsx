@@ -6,7 +6,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { collection, getDocs } from 'firebase/firestore';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Dimensions, FlatList, Image, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Dimensions, FlatList, Image, Linking, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -89,6 +89,7 @@ interface Site {
   assignedTeamMembers: string[];
   attendanceRecords: AttendanceRecord[];
   additionalDocumentsUrls: string[];
+  siteStatus?: string;
   amcProvider: string;
   amcStartDate: string;
   amcExpiryDate: string;
@@ -120,6 +121,7 @@ export default function SitesScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState(0);
+  const [sitesTab, setSitesTab] = useState<'active' | 'completed'>('active');
   const [imageError, setImageError] = useState(false);
   const [complaints, setComplaints] = useState<any[]>([]);
   const [complaintsLoading, setComplaintsLoading] = useState(true);
@@ -149,6 +151,30 @@ export default function SitesScreen() {
       setActiveTab(newTabIndex);
     };
   }, []);
+
+  // Filter sites based on selected tab
+  const filteredSites = useMemo(() => {
+    const activeSites = sites.filter(site => site.siteStatus !== 'Completed');
+    const completedSites = sites.filter(site => site.siteStatus === 'Completed');
+
+    // Debug logging to verify siteStatus classification
+    if (sites.length > 0) {
+      console.log('Site Status Classification:', {
+        total: sites.length,
+        active: activeSites.length,
+        completed: completedSites.length,
+        activeSiteStatuses: activeSites.map(site => ({ id: site.id, status: site.siteStatus })),
+        completedSiteStatuses: completedSites.map(site => ({ id: site.id, status: site.siteStatus }))
+      });
+    }
+
+    if (sitesTab === 'active') {
+      return activeSites;
+    } else if (sitesTab === 'completed') {
+      return completedSites;
+    }
+    return sites;
+  }, [sites, sitesTab]);
 
   // Helper function to convert Firestore timestamps recursively
   const convertTimestamps = (obj: any): any => {
@@ -337,6 +363,33 @@ export default function SitesScreen() {
     }
   };
 
+  // Calculate progress based on start date, end date, and current date
+  const calculateProgress = (startDate: string, endDate: string) => {
+    try {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const current = new Date();
+
+      // If current date is before start date, progress is 0
+      if (current < start) return 0;
+
+      // If current date is after end date, progress is 100
+      if (current > end) return 100;
+
+      // Calculate progress percentage
+      const totalDuration = end.getTime() - start.getTime();
+      const elapsedTime = current.getTime() - start.getTime();
+
+      if (totalDuration <= 0) return 0;
+
+      const progress = (elapsedTime / totalDuration) * 100;
+      return Math.max(0, Math.min(100, Math.round(progress)));
+    } catch (error) {
+      console.error('Error calculating progress:', error);
+      return 0;
+    }
+  };
+
   const styles = StyleSheet.create({
     container: {
       flex: 1,
@@ -436,12 +489,6 @@ export default function SitesScreen() {
     complaintMeta: {
       alignItems: 'flex-end',
     },
-    statusBadge: {
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 12,
-      marginBottom: 4,
-    },
     statusText: {
       color: '#FFFFFF',
       fontSize: 11,
@@ -527,116 +574,218 @@ export default function SitesScreen() {
 
     // Sites Styles
     sitesList: {
-      padding: 16,
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 8,
     },
     siteCard: {
-      backgroundColor: Colors[colorScheme ?? 'dark'].background,
+      backgroundColor: Colors[colorScheme ?? 'dark'].card,
       borderRadius: 12,
       padding: 16,
-      marginBottom: 12,
+      marginBottom: 10,
       borderWidth: 1,
       borderColor: Colors[colorScheme ?? 'dark'].border,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
     },
-    siteHeader: {
+    cardTop: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'flex-start',
       marginBottom: 12,
     },
-    siteInfo: {
+    liftInfo: {
       flex: 1,
+      marginRight: 8,
     },
-    siteName: {
-      fontSize: 18,
-      fontWeight: 'bold',
+    liftName: {
+      fontSize: 16,
+      fontWeight: '700',
       color: Colors[colorScheme ?? 'dark'].text,
-      marginBottom: 4,
-    },
-    siteAddress: {
-      fontSize: 14,
-      color: Colors[colorScheme ?? 'dark'].icon,
-    },
-    siteStatus: {
-      alignItems: 'flex-end',
+      marginBottom: 2,
+      letterSpacing: 0.3,
     },
     liftId: {
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: '600',
       color: Colors[colorScheme ?? 'dark'].tint,
-      marginBottom: 2,
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
     },
-    siteType: {
-      fontSize: 12,
-      color: Colors[colorScheme ?? 'dark'].icon,
-      backgroundColor: Colors[colorScheme ?? 'dark'].border,
-      paddingHorizontal: 8,
-      paddingVertical: 2,
+    statusBadge: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 16,
+      minWidth: 70,
+    },
+    statusBadgeText: {
+      color: '#FFFFFF',
+      fontSize: 10,
+      fontWeight: '700',
+      textAlign: 'center',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    locationRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 10,
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+      backgroundColor: Colors[colorScheme ?? 'dark'].background,
       borderRadius: 8,
+      borderWidth: 1,
+      borderColor: Colors[colorScheme ?? 'dark'].border,
     },
-    siteDetails: {
+    locationText: {
+      fontSize: 13,
+      color: Colors[colorScheme ?? 'dark'].text,
+      marginLeft: 6,
+      flex: 1,
+    },
+    ownerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
       marginBottom: 12,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      backgroundColor: 'rgba(76, 175, 80, 0.05)',
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: 'rgba(76, 175, 80, 0.2)',
     },
-    detailRow: {
+    ownerName: {
+      flex: 1,
+      fontSize: 14,
+      fontWeight: '600',
+      color: Colors[colorScheme ?? 'dark'].text,
+      marginLeft: 8,
+    },
+    callButton: {
+      padding: 6,
+      borderRadius: 6,
+      backgroundColor: '#4CAF50',
+      marginLeft: 6,
+    },
+    actionButtons: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      marginBottom: 4,
+      marginTop: 12,
     },
-    detailLabel: {
-      fontSize: 14,
-      color: Colors[colorScheme ?? 'dark'].icon,
-      fontWeight: '500',
+    actionButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: 8,
+      marginHorizontal: 4,
     },
-    detailValue: {
-      fontSize: 14,
-      color: Colors[colorScheme ?? 'dark'].text,
+    locationButton: {
+      backgroundColor: '#4CAF50', // Green
+    },
+    detailsButton: {
+      backgroundColor: Colors[colorScheme ?? 'dark'].tint, // App theme color
+    },
+    actionButtonText: {
+      color: '#FFFFFF',
+      fontSize: 12,
       fontWeight: '600',
+      marginLeft: 6,
     },
-    progressSection: {
-      marginBottom: 12,
+    progressContainer: {
+      backgroundColor: Colors[colorScheme ?? 'dark'].background,
+      borderRadius: 10,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: Colors[colorScheme ?? 'dark'].border,
     },
-    progressLabel: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: Colors[colorScheme ?? 'dark'].text,
+    progressHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
       marginBottom: 8,
     },
+    progressLabel: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: Colors[colorScheme ?? 'dark'].text,
+    },
+    progressPercent: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: Colors[colorScheme ?? 'dark'].tint,
+    },
     progressBar: {
-      height: 6,
+      height: 5,
       backgroundColor: Colors[colorScheme ?? 'dark'].border,
-      borderRadius: 3,
-      marginBottom: 4,
+      borderRadius: 2.5,
     },
     progressFill: {
       height: '100%',
       backgroundColor: Colors[colorScheme ?? 'dark'].tint,
-      borderRadius: 3,
-    },
-    progressText: {
-      fontSize: 12,
-      color: Colors[colorScheme ?? 'dark'].icon,
-      textAlign: 'center',
-    },
-    workStatus: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-    },
-    statusItem: {
-      alignItems: 'center',
-      flex: 1,
-    },
-    statusLabel: {
-      fontSize: 12,
-      color: Colors[colorScheme ?? 'dark'].icon,
-      marginBottom: 4,
-    },
-    statusValue: {
-      fontSize: 12,
-      fontWeight: '600',
+      borderRadius: 2.5,
+      shadowColor: Colors[colorScheme ?? 'dark'].tint,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.3,
+      shadowRadius: 3,
+      elevation: 1,
     },
     loadingText: {
       marginTop: 12,
       fontSize: 16,
       color: Colors[colorScheme ?? 'dark'].icon,
+    },
+
+    // Sites Tab Styles
+    sitesTabContainer: {
+      flexDirection: 'row',
+      paddingHorizontal: 24,
+      paddingBottom: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: Colors[colorScheme ?? 'dark'].border,
+    },
+    sitesTab: {
+      flex: 1,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 8,
+      marginHorizontal: 4,
+      alignItems: 'center',
+      backgroundColor: Colors[colorScheme ?? 'dark'].border,
+    },
+    sitesTabActive: {
+      backgroundColor: Colors[colorScheme ?? 'dark'].tint,
+    },
+    sitesTabText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: Colors[colorScheme ?? 'dark'].icon,
+    },
+    sitesTabTextActive: {
+      color: '#000000',
+    },
+    sitesTabBadge: {
+      position: 'absolute',
+      top: -8,
+      right: -8,
+      backgroundColor: '#FF3B30',
+      borderRadius: 10,
+      minWidth: 20,
+      height: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 2,
+      borderColor: Colors[colorScheme ?? 'dark'].card,
+    },
+    sitesTabBadgeText: {
+      color: '#FFFFFF',
+      fontSize: 11,
+      fontWeight: '700',
     },
   });
 
@@ -680,6 +829,45 @@ export default function SitesScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Sites Tabs */}
+      {activeTab === 0 && (
+        <View style={styles.sitesTabContainer}>
+          <TouchableOpacity
+            style={[styles.sitesTab, sitesTab === 'active' && styles.sitesTabActive]}
+            onPress={() => setSitesTab('active')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.sitesTabText, sitesTab === 'active' && styles.sitesTabTextActive]}>
+              Active Sites
+            </Text>
+            {sites.filter(site => site.siteStatus !== 'Completed').length > 0 && (
+              <View style={styles.sitesTabBadge}>
+                <Text style={styles.sitesTabBadgeText}>
+                  {sites.filter(site => site.siteStatus !== 'Completed').length}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.sitesTab, sitesTab === 'completed' && styles.sitesTabActive]}
+            onPress={() => setSitesTab('completed')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.sitesTabText, sitesTab === 'completed' && styles.sitesTabTextActive]}>
+              Completed
+            </Text>
+            {sites.filter(site => site.siteStatus === 'Completed').length > 0 && (
+              <View style={styles.sitesTabBadge}>
+                <Text style={styles.sitesTabBadgeText}>
+                  {sites.filter(site => site.siteStatus === 'Completed').length}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Content */}
       {activeTab === 0 ? (
         // Sites Tab
@@ -688,102 +876,108 @@ export default function SitesScreen() {
             <ActivityIndicator size="large" color={Colors[colorScheme ?? 'dark'].tint} />
             <Text style={styles.loadingText}>Loading sites...</Text>
           </View>
-        ) : sites.length === 0 ? (
+        ) : filteredSites.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No sites assigned at the moment.</Text>
+            <Text style={styles.emptyText}>
+              {sitesTab === 'active'
+                ? 'No active sites at the moment.'
+                : 'No completed sites yet.'}
+            </Text>
           </View>
         ) : (
           <FlatList
-            data={sites}
+            data={filteredSites}
             keyExtractor={(item) => item.id}
             renderItem={({ item: site }) => (
-              <TouchableOpacity
-                style={styles.siteCard}
-                onPress={() => router.push({
-                  pathname: '/site-detail',
-                  params: { site: JSON.stringify(site) }
-                })}
-                activeOpacity={0.7}
-              >
-      <View style={styles.siteHeader}>
-                  <View style={styles.siteInfo}>
-                    <Text style={styles.siteName}>{site.siteName || site.liftName}</Text>
-                    <Text style={styles.siteAddress}>
-                      {site.siteAddress}, {site.city}, {site.state}
-        </Text>
-        </View>
-                  <View style={styles.siteStatus}>
+              <View style={styles.siteCard}>
+                {/* Top Section - Lift Info & Status */}
+                <View style={styles.cardTop}>
+                  <View style={styles.liftInfo}>
+                    <Text style={styles.liftName} numberOfLines={1}>
+                      {site.liftName || site.siteName}
+                    </Text>
                     <Text style={styles.liftId}>{site.liftId}</Text>
-                    <Text style={styles.siteType}>{site.siteType}</Text>
-      </View>
-      </View>
-
-                <View style={styles.siteDetails}>
-          <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Owner:</Text>
-                    <Text style={styles.detailValue}>{site.ownerName}</Text>
-          </View>
-          <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Phone:</Text>
-                    <Text style={styles.detailValue}>{site.ownerPhone}</Text>
-          </View>
-          <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Floors:</Text>
-                    <Text style={styles.detailValue}>{site.floorsCount}</Text>
-          </View>
-          <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Operations:</Text>
-                    <Text style={styles.detailValue}>
-                      {site.operationsStartDate} - {site.operationsEndDate}
-            </Text>
-          </View>
-        </View>
-
-                <View style={styles.progressSection}>
-                  <Text style={styles.progressLabel}>Progress</Text>
-                  <View style={styles.progressBar}>
-                    <View
-                      style={[
-                        styles.progressFill,
-                        { width: `${(site.currentStep / 7) * 100}%` }
-                      ]}
-                    />
                   </View>
-                  <Text style={styles.progressText}>
-                    Step {site.currentStep} of 7
-              </Text>
-            </View>
+                  <View style={[styles.statusBadge, {
+                    backgroundColor: site.siteStatus === 'Completed' ? '#4CAF50' : Colors[colorScheme ?? 'dark'].tint
+                  }]}>
+                    <Text style={styles.statusBadgeText}>
+                      {site.siteStatus || 'In Progress'}
+                    </Text>
+                  </View>
+                </View>
 
-                <View style={styles.workStatus}>
-                  <View style={styles.statusItem}>
-                    <Text style={styles.statusLabel}>Civil Work:</Text>
-                    <Text style={[
-                      styles.statusValue,
-                      { color: site.civilWork.status === 'Complete' ? '#4CAF50' : '#FF9800' }
-                    ]}>
-                      {site.civilWork.status}
-              </Text>
-            </View>
-                  <View style={styles.statusItem}>
-                    <Text style={styles.statusLabel}>Electrical:</Text>
-                    <Text style={[
-                      styles.statusValue,
-                      { color: site.electricalWork.status === 'Complete' ? '#4CAF50' : '#FF9800' }
-                    ]}>
-                      {site.electricalWork.status}
-              </Text>
-            </View>
-                  <View style={styles.statusItem}>
-                    <Text style={styles.statusLabel}>Stairs:</Text>
-                    <Text style={[
-                      styles.statusValue,
-                      { color: site.stairsWork.status === 'Complete' ? '#4CAF50' : '#FF9800' }
-                    ]}>
-                      {site.stairsWork.status}
-                </Text>
+                {/* Location */}
+                <View style={styles.locationRow}>
+                  <Ionicons name="location" size={14} color={Colors[colorScheme ?? 'dark'].icon} />
+                  <Text style={styles.locationText} numberOfLines={2}>
+                    {site.flat}, {site.siteAddress}
+                    {site.city && site.state && site.pincode
+                      ? `\n${site.city}, ${site.state} - ${site.pincode}`
+                      : ''}
+                  </Text>
+                </View>
+
+                {/* Owner Contact */}
+                <View style={styles.ownerRow}>
+                  <Ionicons name="person-circle" size={16} color={Colors[colorScheme ?? 'dark'].icon} />
+                  <Text style={styles.ownerName}>{site.ownerName}</Text>
+                  <TouchableOpacity
+                    style={styles.callButton}
+                    onPress={() => Linking.openURL(`tel:${site.ownerPhone}`)}
+                  >
+                    <Ionicons name="call" size={14} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Progress Bar */}
+                {site.operationsStartDate && site.operationsEndDate && (
+                  <View style={styles.progressContainer}>
+                    <View style={styles.progressHeader}>
+                      <Text style={styles.progressLabel}>Progress</Text>
+                      <Text style={styles.progressPercent}>
+                        {calculateProgress(site.operationsStartDate, site.operationsEndDate)}%
+                      </Text>
+                    </View>
+                    <View style={styles.progressBar}>
+                      <View
+                        style={[
+                          styles.progressFill,
+                          { width: `${calculateProgress(site.operationsStartDate, site.operationsEndDate)}%` }
+                        ]}
+                      />
+                    </View>
+                  </View>
+                )}
+
+                {/* Action Buttons */}
+                <View style={styles.actionButtons}>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.locationButton]}
+                    onPress={() => {
+                      if (site.googleLocation) {
+                        Linking.openURL(site.googleLocation);
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="map" size={14} color="#FFFFFF" />
+                    <Text style={styles.actionButtonText}>View Location</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.detailsButton]}
+                    onPress={() => router.push({
+                      pathname: '/site-detail',
+                      params: { site: JSON.stringify(site) }
+                    })}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="information-circle" size={14} color="#FFFFFF" />
+                    <Text style={styles.actionButtonText}>Details</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-          </View>
-              </TouchableOpacity>
             )}
             contentContainerStyle={styles.sitesList}
             showsVerticalScrollIndicator={false}
