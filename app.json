@@ -19,6 +19,7 @@
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#1C1C1E"
       },
+      "package": "com.lubeckteam.app",
       "backgroundColor": "#1C1C1E",
       "edgeToEdgeEnabled": true
     },
@@ -44,6 +45,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "dd115eb2-d449-49ce-95ec-69ccc4fe4a77"
+      }
     }
   }
 }
