@@ -8,10 +8,11 @@ import { Colors } from '@/constants/Colors';
 import { useUser } from '@/context/UserContext';
 import { db } from '@/firebase/firebaseConfig';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc } from 'firebase/firestore';
 import React from 'react';
-import { Alert, Dimensions, Linking, Modal, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Dimensions, Image, Linking, Modal, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -292,9 +293,12 @@ export default function SiteDetailScreen() {
   const [successModalVisible, setSuccessModalVisible] = React.useState(false);
   const [lastMarkedStatus, setLastMarkedStatus] = React.useState<'Present' | 'Absent' | null>(null);
   const [completeSiteModalVisible, setCompleteSiteModalVisible] = React.useState(false);
+  const [liftImageModalVisible, setLiftImageModalVisible] = React.useState(false);
   const [userPassword, setUserPassword] = React.useState('');
   const [isCreatingUser, setIsCreatingUser] = React.useState(false);
   const [siteStatus, setSiteStatus] = React.useState<string | null>(null);
+  const [liftImageUri, setLiftImageUri] = React.useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = React.useState(false);
 
   // Callback to handle materials list updates for immediate UI feedback
   const handleMaterialsUpdate = (updatedMaterials: any[]) => {
@@ -436,16 +440,105 @@ export default function SiteDetailScreen() {
       const liftsCollectionRef = collection(db, 'Users', ownerEmail, 'Lifts');
       const liftsSnapshot = await getDocs(liftsCollectionRef);
       const existingLifts = liftsSnapshot.docs.map(doc => doc.id);
-      
+
       let nextIndex = 1;
       while (existingLifts.includes(`Lift${nextIndex}`)) {
         nextIndex++;
       }
-      
+
       return nextIndex;
     } catch (error) {
       console.error('Error getting next lift index:', error);
       return 1; // Default to 1 if error
+    }
+  };
+
+  // Take photo with camera
+  const takePhoto = async () => {
+    try {
+      // Request permissions
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+
+      if (permissionResult.granted === false) {
+        Alert.alert('Permission Required', 'Permission to access camera is required!');
+        return;
+      }
+
+      // Launch camera with 9:16 aspect ratio (portrait)
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: false, // No cropping
+        aspect: [9, 16], // 9:16 aspect ratio (portrait)
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        // Set the image locally first for confirmation
+        setLiftImageUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error taking photo:', error);
+      Alert.alert('Error', 'Failed to take photo');
+    }
+  };
+
+  // Confirm the selected image and upload to Cloudinary
+  const confirmImage = async () => {
+    if (liftImageUri) {
+      const uploadedUrl = await uploadImageToCloudinary(liftImageUri);
+      if (uploadedUrl) {
+        // Automatically move to user creation dialog
+        setLiftImageModalVisible(false);
+        setCompleteSiteModalVisible(true);
+      }
+    }
+  };
+
+  // Upload image to Cloudinary
+  const uploadImageToCloudinary = async (imageUri: string) => {
+    try {
+      setIsUploadingImage(true);
+
+      // Create form data
+      const formData = new FormData();
+
+      // Get the file extension and create filename
+      const fileExtension = imageUri.split('.').pop();
+      const fileName = `lift_${Date.now()}.${fileExtension}`;
+
+      // Create file object for FormData
+      const file = {
+        uri: imageUri,
+        type: `image/${fileExtension}`,
+        name: fileName,
+      };
+
+      formData.append('file', file as any);
+      formData.append('upload_preset', 'lubeck_lifts');
+      formData.append('folder', 'lubeck-lifts/');
+
+      // Upload to Cloudinary
+      const cloudinaryResponse = await fetch(
+        'https://api.cloudinary.com/v1_1/dkqmfzr1j/image/upload',
+        {
+          method: 'POST',
+          body: formData,
+        }
+      );
+
+      const result = await cloudinaryResponse.json();
+
+      if (result.secure_url) {
+        setLiftImageUri(result.secure_url);
+        return result.secure_url;
+      } else {
+        throw new Error('Upload failed');
+      }
+    } catch (error) {
+      console.error('Error uploading image to Cloudinary:', error);
+      Alert.alert('Upload Error', 'Failed to upload image. Please try again.');
+      throw error;
+    } finally {
+      setIsUploadingImage(false);
     }
   };
 
@@ -487,6 +580,40 @@ export default function SiteDetailScreen() {
 
       await setDoc(doc(db, 'Users', ownerEmail), userDocData);
 
+      // Step 1.5: Store user credentials in Airtable
+      try {
+        const airtableResponse = await fetch(
+          'https://api.airtable.com/v0/app9sz4aFX8aUvZkH/Main',
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': 'Bearer patM7baKG9uWlvadE.0a49b9814dab714f4cb72aafe36b14f47f2ce47beb256a32c68a224d86edaac6',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              records: [
+                {
+                  fields: {
+                    Email: ownerEmail,
+                    Password: userPassword
+                  }
+                }
+              ]
+            })
+          }
+        );
+
+        if (!airtableResponse.ok) {
+          console.warn('Failed to store user in Airtable:', await airtableResponse.text());
+          // Don't throw error - continue with site completion even if Airtable fails
+        } else {
+          console.log('User credentials stored in Airtable successfully');
+        }
+      } catch (airtableError) {
+        console.warn('Airtable integration error:', airtableError);
+        // Continue with site completion even if Airtable fails
+      }
+
       // Step 2: Get next lift index and create lift document
       const nextLiftIndex = await getNextLiftIndex(ownerEmail);
       const liftId = `Lift${nextLiftIndex}`;
@@ -505,7 +632,7 @@ export default function SiteDetailScreen() {
         installationDate: currentDate,
         lastServiceDate: currentDate,
         liftID: (site as any).liftId || '',
-        liftImage: 'https://lubeckelevators.com/_next/image?url=%2FGallery%2FIMPERIAL_GOLD_EDITION%2F1.jpg&w=1920&q=75',
+        liftImage: liftImageUri || 'https://lubeckelevators.com/_next/image?url=%2FGallery%2FIMPERIAL_GOLD_EDITION%2F1.jpg&w=1920&q=75',
         liftName: (site as any).liftName || '',
         location: {
           address: fullAddress,
@@ -545,7 +672,9 @@ export default function SiteDetailScreen() {
 
       // Success
       setCompleteSiteModalVisible(false);
+      setLiftImageModalVisible(false);
       setUserPassword('');
+      setLiftImageUri(null);
       Alert.alert(
         'Success!', 
         'Site completed successfully! User account created and lift registered.',
@@ -923,7 +1052,7 @@ export default function SiteDetailScreen() {
           <View style={styles.completeSiteButtonContainer}>
             <TouchableOpacity
               style={styles.completeSiteButton}
-              onPress={() => setCompleteSiteModalVisible(true)}
+              onPress={() => setLiftImageModalVisible(true)}
               activeOpacity={0.8}
             >
               <Ionicons name="checkmark-done-circle" size={24} color={Colors.dark.text} />
@@ -1032,6 +1161,84 @@ export default function SiteDetailScreen() {
         </View>
       </Modal>
 
+      {/* Lift Image Upload Modal */}
+      <Modal
+        visible={liftImageModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setLiftImageModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.completeSiteModalContainer}>
+            {/* Header */}
+            <View style={styles.completeSiteModalHeader}>
+              <Text style={styles.completeSiteModalTitle}>Upload Lift Image</Text>
+              <TouchableOpacity
+                onPress={() => setLiftImageModalVisible(false)}
+                style={styles.closeButton}
+              >
+                <Ionicons name="close" size={24} color={Colors.dark.text} />
+              </TouchableOpacity>
+          </View>
+
+            {/* Scrollable Content */}
+            <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
+              <View style={styles.completeSiteModalContent}>
+                {/* Image Preview */}
+                <View style={styles.imagePlaceholder}>
+                  {liftImageUri ? (
+                    isUploadingImage ? (
+                      <View style={styles.imagePreviewContainer}>
+                        <Image source={{ uri: liftImageUri }} style={styles.imagePreview} />
+                        <Text style={styles.imageUploadedText}>Uploading to Cloudinary...</Text>
+            </View>
+                    ) : (
+                      <View style={styles.imagePreviewContainer}>
+                        <Image source={{ uri: liftImageUri }} style={styles.imagePreview} />
+                        <Text style={styles.imageUploadedText}>✓ Image uploaded successfully!</Text>
+            </View>
+                    )
+                  ) : (
+                    <>
+                      <Ionicons name="image" size={60} color={Colors.dark.icon} />
+                      <Text style={styles.imagePlaceholderText}>No image selected</Text>
+                    </>
+                  )}
+            </View>
+
+                {/* Upload Options */}
+                <View style={styles.uploadOptionsContainer}>
+                  {!liftImageUri ? (
+                    <TouchableOpacity
+                      style={styles.uploadButton}
+                      onPress={takePhoto}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="camera" size={20} color="#FFFFFF" />
+                      <Text style={styles.uploadButtonText}>Take Photo</Text>
+                    </TouchableOpacity>
+                  ) : !isUploadingImage ? (
+                    <TouchableOpacity
+                      style={[styles.uploadButton, styles.confirmButton]}
+                      onPress={confirmImage}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                      <Text style={styles.uploadButtonText}>Confirm Image</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={[styles.uploadButton, styles.disabledButton]}>
+                      <Ionicons name="sync" size={20} color="#FFFFFF" />
+                      <Text style={styles.uploadButtonText}>Uploading...</Text>
+            </View>
+                  )}
+                </View>
+            </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* Complete Site Modal */}
       <Modal
         visible={completeSiteModalVisible}
@@ -1065,7 +1272,7 @@ export default function SiteDetailScreen() {
                     placeholder="Owner email will be auto-filled"
                     placeholderTextColor={Colors.dark.icon}
                   />
-        </View>
+            </View>
 
                 {/* Password Field */}
                 <View style={styles.inputContainer}>
@@ -1079,7 +1286,7 @@ export default function SiteDetailScreen() {
                     placeholderTextColor={Colors.dark.icon}
                     secureTextEntry={true}
                   />
-          </View>
+            </View>
 
                 {/* Create User Button */}
                 <TouchableOpacity
@@ -1103,9 +1310,9 @@ export default function SiteDetailScreen() {
             </View>
             </ScrollView>
             </View>
-            </View>
+          </View>
       </Modal>
-            </View>
+        </View>
     </>
   );
 }
@@ -1968,6 +2175,64 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   successButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  // Lift Image Modal Styles
+  imagePreviewContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  imagePreview: {
+    width: 200,
+    height: 150,
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+  imageUploadedText: {
+    color: '#4CAF50',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  imagePlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    height: 150,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.dark.border,
+    borderStyle: 'dashed',
+    marginBottom: 20,
+  },
+  imagePlaceholderText: {
+    color: Colors.dark.icon,
+    fontSize: 14,
+    marginTop: 8,
+  },
+  uploadOptionsContainer: {
+    gap: 12,
+    marginBottom: 24,
+  },
+  uploadButton: {
+    backgroundColor: Colors.dark.tint,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 8,
+  },
+  confirmButton: {
+    backgroundColor: '#4CAF50',
+  },
+  cameraButton: {
+    backgroundColor: '#FF6B35',
+  },
+  uploadButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
