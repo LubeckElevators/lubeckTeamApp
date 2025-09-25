@@ -1,0 +1,150 @@
+PRIVACY POLICY FOR LUBECK TEAM APP
+
+Last Updated: September 24, 2025
+
+This Privacy Policy describes how Lubeck Team ("we," "us," or "our") collects, uses, discloses, and safeguards your information when you use our mobile application (the "App"). By using the App, you agree to the collection and use of information in accordance with this policy.
+
+1. INFORMATION WE COLLECT
+
+1.1 Personal Information
+We may collect the following personal information:
+- Email address and password for authentication
+- User profile information (name, role, position)
+- Contact information (phone number, address)
+- Site-related data and project information
+
+1.2 Usage Data
+We automatically collect certain information when you use the App:
+- Device information (device type, operating system, unique device identifiers)
+- App usage statistics and performance data
+- Log data and crash reports
+- Location data (if location services are enabled for map functionality)
+
+1.3 Images and Media
+- Photographs taken or selected within the App (such as lift installation images)
+- Images are uploaded to our secure cloud storage service
+
+2. HOW WE USE YOUR INFORMATION
+
+We use the collected information for the following purposes:
+- To authenticate users and provide access to the App
+- To manage and track elevator/lift installation projects
+- To store project-related data and documentation
+- To provide customer support and technical assistance
+- To improve the App's functionality and user experience
+- To comply with legal obligations and business requirements
+- To communicate with you about app updates and important notifications
+
+3. INFORMATION SHARING AND DISCLOSURE
+
+We do not sell, trade, or otherwise transfer your personal information to third parties except in the following circumstances:
+
+3.1 Service Providers
+We may share your information with trusted third-party service providers who assist us in operating the App:
+- Firebase (Google) - for authentication and data storage
+- Cloudinary - for image storage and delivery
+- Airtable - for additional data management
+
+3.2 Legal Requirements
+We may disclose your information if required by law, court order, or government regulation.
+
+3.3 Business Transfers
+In the event of a merger, acquisition, or sale of assets, your information may be transferred to the new entity.
+
+4. DATA STORAGE AND SECURITY
+
+4.1 Data Storage
+- Personal data is stored in Firebase Firestore (hosted by Google)
+- Images are stored in Cloudinary's secure cloud storage
+- Additional user credentials are stored in Airtable
+
+4.2 Data Security
+We implement appropriate technical and organizational security measures to protect your personal information against unauthorized access, alteration, disclosure, or destruction. However, no method of transmission over the internet is 100% secure.
+
+4.3 Data Retention
+We retain your personal information for as long as necessary to provide our services and comply with legal obligations. You may request deletion of your data by contacting us.
+
+5. YOUR RIGHTS AND CHOICES
+
+Depending on your location, you may have the following rights regarding your personal information:
+
+5.1 Access and Correction
+You can access and update your personal information through the App's settings.
+
+5.2 Data Deletion
+You can request deletion of your personal information by contacting us.
+
+5.3 Opt-out
+You can opt-out of non-essential communications by adjusting your notification preferences.
+
+5.4 Location Data
+You can disable location services through your device settings if you do not want to share location data.
+
+6. CHILDREN'S PRIVACY
+
+The App is intended for use by adults and business professionals aged 18 and older. We do not knowingly collect personal information from children under 18. If we become aware that we have collected personal information from a child under 18, we will take steps to delete such information.
+
+7. INTERNATIONAL DATA TRANSFERS
+
+Your information may be transferred to and processed in countries other than your own. We ensure that such transfers comply with applicable data protection laws and implement appropriate safeguards.
+
+8. THIRD-PARTY SERVICES
+
+The App integrates with third-party services:
+
+8.1 Firebase
+Firebase provides authentication, database, and analytics services. Their privacy policy governs the use of data collected through Firebase.
+
+8.2 Cloudinary
+Cloudinary provides image storage and delivery services. Their privacy policy applies to images stored through their service.
+
+8.3 Airtable
+Airtable provides additional data storage services. Their privacy policy governs the use of data stored in Airtable.
+
+8.4 Google Maps
+Location services may use Google Maps. Google's privacy policy applies to location data processing.
+
+9. COOKIES AND TRACKING TECHNOLOGIES
+
+The App may use cookies and similar tracking technologies to enhance user experience and analyze usage patterns. You can control cookie settings through your device and browser settings.
+
+10. CHANGES TO THIS PRIVACY POLICY
+
+We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy within the App and updating the "Last Updated" date.
+
+11. CONTACT US
+
+If you have any questions about this Privacy Policy or our privacy practices, please contact us:
+
+Address: Lubeck Elevators Pvt. Ltd., Mumbai, Maharashtra, India
+
+12. COMPLIANCE WITH LAWS
+
+This App and its privacy practices comply with applicable data protection laws including:
+- General Data Protection Regulation (GDPR) for EU users
+- California Consumer Privacy Act (CCPA) for California residents
+- Other applicable privacy laws and regulations
+
+13. CONSENT
+
+By using the App, you consent to the collection, use, and sharing of your information as described in this Privacy Policy.
+
+14. ADDITIONAL INFORMATION FOR GOOGLE PLAY STORE
+
+This privacy policy is provided in accordance with Google Play's Developer Program Policies and the Google Play Developer Distribution Agreement.
+
+14.1 Data Collection and Security
+We are committed to protecting user privacy and data security. All data collection is transparent and serves legitimate business purposes.
+
+14.2 Children's Privacy
+The App is not directed to children under 18 and does not knowingly collect personal information from children.
+
+14.3 Data Deletion
+Users can request data deletion through the App or by contacting us directly.
+
+14.4 Third-Party Services
+All third-party services used comply with their respective privacy policies and data protection requirements.
+
+15. GOVERNING LAW
+
+This Privacy Policy is governed by the laws of India, without regard to its conflict of law provisions.
