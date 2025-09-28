@@ -12,16 +12,41 @@ interface PreworkingStageProps {
   ownerEmail?: string;
 }
 
+// Helper function to find the actual document ID in sites collection
+const findSitesDocumentId = async (ownerEmail: string, siteData: any): Promise<string | null> => {
+  try {
+    const { collection, getDocs } = await import('firebase/firestore');
+    const { db } = await import('@/firebase/firebaseConfig');
+
+    const sitesCollectionRef = collection(db, 'sites');
+    const sitesSnapshot = await getDocs(sitesCollectionRef);
+
+    for (const doc of sitesSnapshot.docs) {
+      const docData = doc.data();
+      // Match by ownerEmail and key identifying fields
+      if (docData.ownerEmail === ownerEmail &&
+          docData.liftId === siteData.liftId &&
+          docData.siteAddress === siteData.siteAddress) {
+        return doc.id;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Error finding sites document ID:', error);
+    return null;
+  }
+};
+
 const PreworkingStage: React.FC<PreworkingStageProps> = ({ siteId, siteData, userEmail, ownerEmail }) => {
   const [preworkModalVisible, setPreworkModalVisible] = useState(false);
   const [selectedWorkStage, setSelectedWorkStage] = useState<string>('');
-  const [checkedItems, setCheckedItems] = useState<{[key: string]: {[key: string]: boolean}}>({
+  const [checkedItems, setCheckedItems] = useState<{[key: string]: {[key: string]: boolean | any}}>({
     civil: {},
     electrical: {},
     stairs: {},
     lift: {}
   });
-  const [originalCheckedItems, setOriginalCheckedItems] = useState<{[key: string]: {[key: string]: boolean}}>({
+  const [originalCheckedItems, setOriginalCheckedItems] = useState<{[key: string]: {[key: string]: boolean | any}}>({
     civil: {},
     electrical: {},
     stairs: {},
@@ -56,20 +81,13 @@ const PreworkingStage: React.FC<PreworkingStageProps> = ({ siteId, siteData, use
         });
       }
 
-      if (siteData.stairsWork) {
-        Object.entries(siteData.stairsWork).forEach(([key, value]) => {
-          if (typeof value === 'boolean') {
-            newCheckedItems.stairs[key] = value;
-          }
-        });
+      // For stages with no items, check the status field
+      if (siteData.stairsWork?.status === 'Complete') {
+        newCheckedItems.stairs.complete = true;
       }
 
-      if (siteData.liftSquareFolding) {
-        Object.entries(siteData.liftSquareFolding).forEach(([key, value]) => {
-          if (typeof value === 'boolean') {
-            newCheckedItems.lift[key] = value;
-          }
-        });
+      if (siteData.liftSquareFolding?.status === 'Complete') {
+        newCheckedItems.lift.complete = true;
       }
 
       setCheckedItems(newCheckedItems);
@@ -141,8 +159,15 @@ const PreworkingStage: React.FC<PreworkingStageProps> = ({ siteId, siteData, use
 
   const isStageComplete = (stageId: string) => {
     const stage = preworkStages.find(s => s.id === stageId);
-    if (!stage || stage.items.length === 0) return false;
+    if (!stage) return false;
 
+    // For stages with no items, check if they are manually marked complete
+    if (stage.items.length === 0) {
+      // Check if this stage has been marked as complete in the current session
+      return checkedItems[stageId]?.complete === true;
+    }
+
+    // For stages with items, check if all items are complete
     return stage.items.every(item => checkedItems[stageId]?.[item.id]);
   };
 
@@ -186,19 +211,36 @@ const PreworkingStage: React.FC<PreworkingStageProps> = ({ siteId, siteData, use
       const updateData: any = {};
       const currentStageItems = checkedItems[selectedWorkStage] || {};
 
-      stage.items.forEach(item => {
-        const currentValue = currentStageItems[item.id] || false;
-        updateData[`${stage.firebaseField}.${item.id}`] = currentValue;
-      });
-
-      // Update status based on completion state
-      const isComplete = isStageComplete(selectedWorkStage);
-      if (isComplete) {
+      // For stages with no items, handle "Mark as Complete" differently
+      if (stage.items.length === 0) {
+        // When user clicks "Mark as Complete" for stages with no items
         updateData[`${stage.firebaseField}.status`] = "Complete";
-        console.log(`✅ Stage ${selectedWorkStage} marked as Complete`);
+        console.log(`✅ Stage ${selectedWorkStage} marked as Complete (no checklist items)`);
+
+        // Update local state to reflect completion
+        setCheckedItems(prev => ({
+          ...prev,
+          [selectedWorkStage]: {
+            ...prev[selectedWorkStage],
+            complete: true
+          }
+        }));
       } else {
-        updateData[`${stage.firebaseField}.status`] = "Incomplete";
-        console.log(`⚠️ Stage ${selectedWorkStage} marked as Incomplete (not all items checked)`);
+        // For stages with items, update each item
+        stage.items.forEach(item => {
+          const currentValue = currentStageItems[item.id] || false;
+          updateData[`${stage.firebaseField}.${item.id}`] = currentValue;
+        });
+
+        // Update status based on completion state
+        const isComplete = isStageComplete(selectedWorkStage);
+        if (isComplete) {
+          updateData[`${stage.firebaseField}.status`] = "Complete";
+          console.log(`✅ Stage ${selectedWorkStage} marked as Complete`);
+        } else {
+          updateData[`${stage.firebaseField}.status`] = "Incomplete";
+          console.log(`⚠️ Stage ${selectedWorkStage} marked as Incomplete (not all items checked)`);
+        }
       }
 
       // Update both Firebase paths
@@ -210,12 +252,15 @@ const PreworkingStage: React.FC<PreworkingStageProps> = ({ siteId, siteData, use
         updateDoc(teamSiteDocRef, updateData)
       );
 
-      // Update sites/{ownerEmail} if ownerEmail is available
+      // Update sites/{sitesDocId} if ownerEmail is available
       if (ownerEmail) {
-        const ownerSiteDocRef = doc(db, 'sites', ownerEmail);
-        updatePromises.push(
-          updateDoc(ownerSiteDocRef, updateData)
-        );
+        const sitesDocId = await findSitesDocumentId(ownerEmail, siteData);
+        if (sitesDocId) {
+          const ownerSiteDocRef = doc(db, 'sites', sitesDocId);
+          updatePromises.push(
+            updateDoc(ownerSiteDocRef, updateData)
+          );
+        }
       }
 
       // Wait for both updates to complete

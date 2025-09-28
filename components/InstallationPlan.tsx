@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { doc, updateDoc } from 'firebase/firestore';
+import { collection, doc, getDocs, updateDoc } from 'firebase/firestore';
 import React, { useState } from 'react';
 import { Dimensions, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Colors } from '../constants/Colors';
@@ -10,14 +10,38 @@ interface InstallationPlanProps {
   userEmail?: string;
   siteId?: string;
   ownerEmail?: string;
+  siteData?: any; // Full site data for finding document ID
   onQualityCheckUpdate?: (updatedChecks: { [key: string]: string }) => void;
 }
+
+// Helper function to find the actual document ID in sites collection
+const findSitesDocumentId = async (ownerEmail: string, siteData: any): Promise<string | null> => {
+  try {
+    const sitesCollectionRef = collection(db, 'sites');
+    const sitesSnapshot = await getDocs(sitesCollectionRef);
+
+    for (const doc of sitesSnapshot.docs) {
+      const docData = doc.data();
+      // Match by ownerEmail and key identifying fields
+      if (docData.ownerEmail === ownerEmail &&
+          docData.liftId === siteData.liftId &&
+          docData.siteAddress === siteData.siteAddress) {
+        return doc.id;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Error finding sites document ID:', error);
+    return null;
+  }
+};
 
 const InstallationPlan: React.FC<InstallationPlanProps> = ({
   installationTasks,
   userEmail,
   siteId,
   ownerEmail,
+  siteData,
   onQualityCheckUpdate,
 }) => {
   const [viewPlanModalVisible, setViewPlanModalVisible] = useState(false);
@@ -85,12 +109,15 @@ const InstallationPlan: React.FC<InstallationPlanProps> = ({
           updateDoc(teamSiteDocRef, updateData)
         );
 
-        // Update sites/{ownerEmail} if ownerEmail is available
-        if (ownerEmail) {
-          const ownerSiteDocRef = doc(db, 'sites', ownerEmail);
-          updatePromises.push(
-            updateDoc(ownerSiteDocRef, updateData)
-          );
+        // Update sites/{sitesDocId} if ownerEmail and siteData are available
+        if (ownerEmail && siteData) {
+          const sitesDocId = await findSitesDocumentId(ownerEmail, siteData);
+          if (sitesDocId) {
+            const ownerSiteDocRef = doc(db, 'sites', sitesDocId);
+            updatePromises.push(
+              updateDoc(ownerSiteDocRef, updateData)
+            );
+          }
         }
 
         // Wait for both updates to complete

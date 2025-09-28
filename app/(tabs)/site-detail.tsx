@@ -648,7 +648,7 @@ export default function SiteDetailScreen() {
 
       await setDoc(doc(db, 'Users', ownerEmail, 'Lifts', liftId), liftDocData);
 
-      // Step 3: Update siteStatus in both paths
+      // Step 3: Find the actual document ID in sites collection and update both paths
       const updateData = {
         siteStatus: 'Completed',
         updatedAt: new Date()
@@ -656,15 +656,23 @@ export default function SiteDetailScreen() {
 
       const updatePromises = [];
 
-      // Update sites/{ownerEmail}
+      // Find the actual document ID in sites collection
+      // Sites collection uses format: {ownerEmail}.{date}.{time}
+      const sitesDocId = await findSitesDocumentId(ownerEmail, site);
+      if (!sitesDocId) {
+        throw new Error('Could not find corresponding document in sites collection');
+      }
+
+      // Update sites/{sitesDocId} (actual document ID in sites collection)
       updatePromises.push(
-        updateDoc(doc(db, 'sites', ownerEmail), updateData)
+        updateDoc(doc(db, 'sites', sitesDocId), updateData)
       );
 
-      // Update team/{userEmail}/sites/{ownerEmail}
+      // Update team/{userEmail}/sites/{siteId} (site.id is the actual document ID in team subcollection)
       if (userProfile.email) {
+        const teamSiteDocId = site.siteId || site.id;
         updatePromises.push(
-          updateDoc(doc(db, 'team', userProfile.email, 'sites', ownerEmail), updateData)
+          updateDoc(doc(db, 'team', userProfile.email, 'sites', teamSiteDocId), updateData)
         );
       }
 
@@ -686,6 +694,28 @@ export default function SiteDetailScreen() {
       Alert.alert('Error', 'Failed to complete site conversion. Please try again.');
     } finally {
       setIsCreatingUser(false);
+    }
+  };
+
+  // Helper function to find the actual document ID in sites collection
+  const findSitesDocumentId = async (ownerEmail: string, siteData: any): Promise<string | null> => {
+    try {
+      const sitesCollectionRef = collection(db, 'sites');
+      const sitesSnapshot = await getDocs(sitesCollectionRef);
+
+      for (const doc of sitesSnapshot.docs) {
+        const docData = doc.data();
+        // Match by ownerEmail and key identifying fields
+        if (docData.ownerEmail === ownerEmail &&
+            docData.liftId === siteData.liftId &&
+            docData.siteAddress === siteData.siteAddress) {
+          return doc.id;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error('Error finding sites document ID:', error);
+      return null;
     }
   };
 
@@ -962,6 +992,7 @@ export default function SiteDetailScreen() {
             userEmail={userProfile?.email || undefined}
             siteId={site.siteId || site.id || undefined}
             ownerEmail={(site as any).ownerEmail || undefined}
+            siteData={site}
             onMaterialsUpdate={handleMaterialsUpdate}
           />
 
@@ -971,6 +1002,7 @@ export default function SiteDetailScreen() {
             userEmail={userProfile?.email || undefined}
             siteId={site.siteId || site.id || undefined}
             ownerEmail={(site as any).ownerEmail || undefined}
+            siteData={site}
             onQualityCheckUpdate={handleQualityCheckUpdate}
           />
 
@@ -1232,7 +1264,7 @@ export default function SiteDetailScreen() {
                       <Text style={styles.uploadButtonText}>Uploading...</Text>
             </View>
                   )}
-                </View>
+            </View>
             </View>
             </ScrollView>
           </View>

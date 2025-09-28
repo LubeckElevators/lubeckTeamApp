@@ -895,17 +895,17 @@ export default function SitesScreen() {
                   <View style={styles.liftInfo}>
                     <Text style={styles.liftName} numberOfLines={1}>
                       {site.liftName || site.siteName}
-                    </Text>
+        </Text>
                     <Text style={styles.liftId}>{site.liftId}</Text>
-                  </View>
+      </View>
                   <View style={[styles.statusBadge, {
                     backgroundColor: site.siteStatus === 'Completed' ? '#4CAF50' : Colors[colorScheme ?? 'dark'].tint
                   }]}>
                     <Text style={styles.statusBadgeText}>
                       {site.siteStatus || 'In Progress'}
                     </Text>
-                  </View>
-                </View>
+      </View>
+          </View>
 
                 {/* Location */}
                 <View style={styles.locationRow}>
@@ -915,8 +915,8 @@ export default function SitesScreen() {
                     {site.city && site.state && site.pincode
                       ? `\n${site.city}, ${site.state} - ${site.pincode}`
                       : ''}
-                  </Text>
-                </View>
+            </Text>
+          </View>
 
                 {/* Owner Contact */}
                 <View style={styles.ownerRow}>
@@ -928,26 +928,26 @@ export default function SitesScreen() {
                   >
                     <Ionicons name="call" size={14} color="#FFFFFF" />
                   </TouchableOpacity>
-                </View>
+        </View>
 
                 {/* Progress Bar */}
                 {site.operationsStartDate && site.operationsEndDate && (
                   <View style={styles.progressContainer}>
                     <View style={styles.progressHeader}>
-                      <Text style={styles.progressLabel}>Progress</Text>
+                  <Text style={styles.progressLabel}>Progress</Text>
                       <Text style={styles.progressPercent}>
                         {calculateProgress(site.operationsStartDate, site.operationsEndDate)}%
                       </Text>
                     </View>
-                    <View style={styles.progressBar}>
-                      <View
-                        style={[
-                          styles.progressFill,
+                  <View style={styles.progressBar}>
+                    <View
+                      style={[
+                        styles.progressFill,
                           { width: `${calculateProgress(site.operationsStartDate, site.operationsEndDate)}%` }
-                        ]}
-                      />
-                    </View>
+                      ]}
+                    />
                   </View>
+            </View>
                 )}
 
                 {/* Action Buttons */}
@@ -976,8 +976,8 @@ export default function SitesScreen() {
                     <Ionicons name="information-circle" size={14} color="#FFFFFF" />
                     <Text style={styles.actionButtonText}>Details</Text>
                   </TouchableOpacity>
-                </View>
-              </View>
+            </View>
+            </View>
             )}
             contentContainerStyle={styles.sitesList}
             showsVerticalScrollIndicator={false}
