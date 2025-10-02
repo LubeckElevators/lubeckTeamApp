@@ -8,7 +8,7 @@ export default function IndexRedirect() {
   useEffect(() => {
     // Immediately redirect to sites screen
     router.replace('/sites');
-  }, [router]);
+  }, []);
 
   return <View />;
 }

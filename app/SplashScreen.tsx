@@ -9,24 +9,38 @@ export default function SplashScreen() {
   const { userProfile, isLoading } = useUser();
   const loadingProgress = useSharedValue(0);
 
+  // Start progress animation and handle navigation when component mounts
   useEffect(() => {
-    // Start progress animation immediately
     loadingProgress.value = withTiming(1, { duration: 2500 });
 
-    const timer = setTimeout(() => {
-      // Wait for loading to complete before redirecting
-      if (!isLoading) {
+    // If already loaded, navigate immediately
+    if (!isLoading) {
+      const timer = setTimeout(() => {
+        if (userProfile) {
+          router.replace('/(tabs)/sites');
+        } else {
+          router.replace('/login');
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  // Handle navigation when loading completes (if it wasn't complete on mount)
+  useEffect(() => {
+    if (!isLoading) {
+      const timer = setTimeout(() => {
         // Check authentication status and redirect accordingly
         if (userProfile) {
           router.replace('/(tabs)/sites');
         } else {
           router.replace('/login');
         }
-      }
-    }, 3000);
+      }, 500); // Short delay to ensure smooth transition
 
-    return () => clearTimeout(timer);
-  }, [router, loadingProgress, userProfile, isLoading]);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, userProfile, router]);
 
   const loadingBarStyle = useAnimatedStyle(() => {
     return {
