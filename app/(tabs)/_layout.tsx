@@ -23,6 +23,18 @@ export default function TabLayout() {
         }}
       />
       <Stack.Screen
+        name="sales"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="sales-form"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
         name="complaint-detail"
         options={{
           headerShown: false,

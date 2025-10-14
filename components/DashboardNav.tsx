@@ -7,7 +7,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type DashboardNavActive = 'sites' | 'complaints';
+type DashboardNavActive = 'sites' | 'complaints' | 'sales';
 
 interface DashboardNavProps {
   active: DashboardNavActive;
@@ -36,6 +36,8 @@ export default function DashboardNav({ active }: DashboardNavProps) {
       router.replace('/(tabs)/sites');
     } else if (target === 'complaints') {
       router.replace('/(tabs)/complaints');
+    } else if (target === 'sales') {
+      router.replace('/(tabs)/sales');
     }
   };
 
@@ -54,6 +56,13 @@ export default function DashboardNav({ active }: DashboardNavProps) {
           iconName="document-text"
           active={active === 'complaints'}
           onPress={() => handlePress('complaints')}
+          colorScheme={colorScheme}
+        />
+        <NavItem
+          label="Sales"
+          iconName="cash"
+          active={active === 'sales'}
+          onPress={() => handlePress('sales')}
           colorScheme={colorScheme}
         />
       </View>
