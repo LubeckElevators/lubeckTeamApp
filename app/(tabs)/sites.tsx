@@ -1,8 +1,10 @@
 import DashboardNav from '@/components/DashboardNav';
+import UpdateChecker from '@/components/UpdateChecker';
 import { Colors } from '@/constants/Colors';
 import { useUser } from '@/context/UserContext';
 import { db } from '@/firebase/firebaseConfig';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { collection, getDocs } from 'firebase/firestore';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -120,6 +122,9 @@ export default function SitesScreen() {
   const colorScheme = 'dark'; // Force dark mode
   const insets = useSafeAreaInsets();
   const router = useRouter();
+
+  // Get current app version
+  const currentVersion = Constants.expoConfig?.version || '1.0.0';
   const [activeTab, setActiveTab] = useState(0);
   const [sitesTab, setSitesTab] = useState<'active' | 'completed'>('active');
   const [imageError, setImageError] = useState(false);
@@ -1067,6 +1072,9 @@ export default function SitesScreen() {
       <DashboardNav
         active={activeTab === 0 ? 'sites' : 'complaints'}
       />
+
+      {/* Update Checker - Invisible component that monitors for updates */}
+      <UpdateChecker currentVersion={currentVersion} theme={colorScheme} />
     </View>
   );
 }

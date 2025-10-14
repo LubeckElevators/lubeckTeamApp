@@ -2,7 +2,7 @@
   "expo": {
     "name": "Lubeck Team",
     "slug": "lubeck-team",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "lubeckteam",
@@ -21,7 +21,13 @@
       },
       "package": "com.lubeckteam.app",
       "backgroundColor": "#1C1C1E",
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.REQUEST_INSTALL_PACKAGES"
+      ]
     },
     "web": {
       "bundler": "metro",
