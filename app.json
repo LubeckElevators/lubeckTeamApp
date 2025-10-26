@@ -54,10 +54,7 @@
         {
           "icon": "./assets/images/notification-icon.png",
           "color": "#DEB54B",
-          "defaultChannel": "default",
-          "sounds": [
-            "./assets/sounds/notification.wav"
-          ]
+          "defaultChannel": "default"
         }
       ]
     ],
