@@ -231,7 +231,7 @@ export default function ComplaintsScreen() {
     },
     listContentContainer: {
       paddingHorizontal: 24,
-      paddingBottom: 24,
+      paddingBottom: 100,
     },
     complaintCard: {
       borderRadius: 16,

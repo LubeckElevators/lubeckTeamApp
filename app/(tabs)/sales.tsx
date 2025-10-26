@@ -193,6 +193,7 @@ export default function SalesScreen() {
     salesList: {
       flex: 1,
       paddingTop: 20,
+      paddingBottom: 100,
     },
     saleCard: {
       backgroundColor: Colors[colorScheme ?? 'dark'].card,

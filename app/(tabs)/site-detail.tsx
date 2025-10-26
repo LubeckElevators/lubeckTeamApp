@@ -910,6 +910,20 @@ export default function SiteDetailScreen() {
           <Text style={styles.headerTitle}>{site.siteName || site.liftName}</Text>
           <Text style={styles.headerSubtitle}>{site.liftId}</Text>
         </View>
+        <TouchableOpacity
+          style={styles.chatButton}
+          activeOpacity={0.7}
+          onPress={() => router.push({
+            pathname: '/chat',
+            params: {
+              siteId: site.siteId || site.id,
+              siteName: site.siteName || site.liftName,
+              ownerEmail: (site as any).ownerEmail
+            }
+          })}
+        >
+          <Ionicons name="chatbubble-outline" size={24} color={Colors.dark.text} />
+        </TouchableOpacity>
       </View>
 
         {/* Add spacing after header */}
@@ -1391,6 +1405,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   moreButton: {
+    padding: 8,
+  },
+  chatButton: {
     padding: 8,
   },
 

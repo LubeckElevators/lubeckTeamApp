@@ -581,7 +581,7 @@ export default function SitesScreen() {
     sitesList: {
       paddingHorizontal: 16,
       paddingTop: 16,
-      paddingBottom: 8,
+      paddingBottom: 100,
     },
     siteCard: {
       backgroundColor: Colors[colorScheme ?? 'dark'].card,
