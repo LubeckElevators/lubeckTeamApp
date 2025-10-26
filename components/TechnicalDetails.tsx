@@ -351,16 +351,24 @@ const TechnicalDetails: React.FC<TechnicalDetailsProps> = ({
           >
             <View style={technicalStyles.materialsContainer}>
               {filteredMaterials && filteredMaterials.length > 0 ? (
-                filteredMaterials.map((material, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={technicalStyles.materialItem}
-                    onPress={() => openStatusChangeModal(material)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={technicalStyles.materialIconContainer}>
-                      <Ionicons name="cube" size={22} color={Colors.dark.text} />
-                    </View>
+                filteredMaterials.map((material, index) => {
+                  const isDelivered = material.status?.toLowerCase() === 'delivered';
+                  return (
+                    <TouchableOpacity
+                      key={index}
+                      style={technicalStyles.materialItem}
+                      onPress={() => !isDelivered && openStatusChangeModal(material)}
+                      activeOpacity={isDelivered ? 1 : 0.7}
+                      disabled={isDelivered}
+                    >
+                      <View style={technicalStyles.materialIconContainer}>
+                        <Ionicons name="cube" size={22} color={Colors.dark.text} />
+                        {isDelivered && (
+                          <View style={technicalStyles.materialLockIcon}>
+                            <Ionicons name="lock-closed" size={12} color={Colors.dark.icon} />
+                          </View>
+                        )}
+                      </View>
                     <View style={technicalStyles.materialTextContainer}>
                       <Text style={technicalStyles.materialText}>{material.name}</Text>
                       <View style={technicalStyles.materialStatusBadge}>
@@ -369,11 +377,12 @@ const TechnicalDetails: React.FC<TechnicalDetailsProps> = ({
                         </Text>
                       </View>
                     </View>
-                    <View style={technicalStyles.materialArrow}>
-                      <Ionicons name="chevron-forward" size={24} color={Colors.dark.icon} />
-                    </View>
-                  </TouchableOpacity>
-                ))
+                      <View style={technicalStyles.materialArrow}>
+                        <Ionicons name="chevron-forward" size={24} color={Colors.dark.icon} />
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
               ) : (
                 <View style={technicalStyles.noDocContainer}>
                   <Ionicons name="cube" size={32} color={Colors.dark.icon} />
@@ -429,7 +438,21 @@ const TechnicalDetails: React.FC<TechnicalDetailsProps> = ({
                   { label: 'Placed', value: 'Placed', icon: 'cart' },
                   { label: 'Out for Delivery', value: 'Out for Delivery', icon: 'car' },
                   { label: 'Delivered', value: 'Delivered', icon: 'checkmark-circle' }
-                ].map((option) => (
+                ].filter((option) => {
+                  // Prevent backward transitions based on current status
+                  const currentStatus = selectedMaterial?.status?.toLowerCase();
+
+                  if (currentStatus === 'delivered') {
+                    // Cannot change from Delivered to anything
+                    return false;
+                  } else if (currentStatus === 'out for delivery') {
+                    // Can only change to Delivered
+                    return option.value === 'Delivered';
+                  } else {
+                    // Can change to any status from Placed
+                    return true;
+                  }
+                }).map((option) => (
                   <TouchableOpacity
                     key={option.value}
                     style={[
@@ -820,6 +843,14 @@ const technicalStyles = {
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 3,
+  },
+  materialLockIcon: {
+    position: 'absolute' as const,
+    top: -2,
+    right: -2,
+    backgroundColor: Colors.dark.card,
+    borderRadius: 6,
+    padding: 2,
   },
   materialTextContainer: {
     flex: 1,

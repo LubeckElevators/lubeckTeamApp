@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { View } from 'react-native';
 import 'react-native-reanimated';
 
+import { setupNotificationHandler } from '@/components/NotificationService';
 import { UserProvider, useUser } from '@/context/UserContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
@@ -29,6 +30,9 @@ function NavigationHandler() {
 
   useEffect(() => {
     if (!isLoading) {
+      // Set up notification handler
+      const notificationSubscription = setupNotificationHandler(router);
+
       // Small delay to ensure smooth transition from native splash screen
       const timer = setTimeout(() => {
         if (userProfile) {
@@ -38,7 +42,10 @@ function NavigationHandler() {
         }
       }, 300);
 
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer);
+        notificationSubscription.remove();
+      };
     }
   }, [isLoading, userProfile, router]);
 

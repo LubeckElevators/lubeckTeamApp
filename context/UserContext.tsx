@@ -1,3 +1,4 @@
+import { storePushToken } from '@/components/NotificationService';
 import { db } from '@/firebase/firebaseConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc } from 'firebase/firestore';
@@ -159,6 +160,9 @@ export function UserProvider({ children }: UserProviderProps) {
       // Save user profile to persistent storage
       await saveUserProfile(userProfile);
       setUserProfile(userProfile);
+
+      // Store push token for notifications
+      await storePushToken(userProfile.email);
     } catch (error) {
       console.error('Login failed:', error);
       throw error;

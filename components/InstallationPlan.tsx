@@ -3,6 +3,7 @@ import { collection, doc, getDocs, updateDoc } from 'firebase/firestore';
 import React, { useState } from 'react';
 import { Dimensions, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Colors } from '../constants/Colors';
+import { useUser } from '../context/UserContext';
 import { db } from '../firebase/firebaseConfig';
 
 interface InstallationPlanProps {
@@ -44,9 +45,13 @@ const InstallationPlan: React.FC<InstallationPlanProps> = ({
   siteData,
   onQualityCheckUpdate,
 }) => {
+  const { userProfile } = useUser();
   const [viewPlanModalVisible, setViewPlanModalVisible] = useState(false);
   const [qualityCheckModalVisible, setQualityCheckModalVisible] = useState(false);
   const [selectedQualityCheck, setSelectedQualityCheck] = useState<{ name: string; currentStatus: string } | null>(null);
+
+  // Check if user has permission to update quality checks
+  const canUpdateQualityChecks = userProfile?.role?.toLowerCase() === 'quality check mechanic';
   // Get current date in YYYY-MM-DD format
   const getCurrentDate = () => {
     const today = new Date();
@@ -154,7 +159,7 @@ const InstallationPlan: React.FC<InstallationPlanProps> = ({
       if ((taskName.toLowerCase().includes('quality') ||
           taskName.toLowerCase().includes('check')) &&
           !taskName.toLowerCase().includes('finalcheckup')) {
-        qualityChecks[taskName] = taskValue;
+        qualityChecks[taskName] = taskValue as string;
       }
     });
 
@@ -298,40 +303,64 @@ const InstallationPlan: React.FC<InstallationPlanProps> = ({
 
               {/* Quality Checks Section */}
               <View style={installationStyles.planSection}>
-                <Text style={installationStyles.sectionTitle}>Quality Checks</Text>
+                <View style={installationStyles.sectionHeader}>
+                  <Text style={installationStyles.sectionTitle}>Quality Checks</Text>
+                  {!canUpdateQualityChecks && (
+                    <View style={installationStyles.permissionBadge}>
+                      <Ionicons name="lock-closed" size={14} color={Colors.dark.icon} />
+                      {/* <Text style={installationStyles.permissionText}>Quality Check Mechanic Only</Text> */}
+                    </View>
+                  )}
+                </View>
                 {qualityChecks && Object.keys(qualityChecks).length > 0 ? (() => {
                   const checks = qualityChecks;
-                  return Object.entries(checks || {}).map(([checkName, checkStatus]) => (
-                    <TouchableOpacity
-                      key={checkName}
-                      style={installationStyles.qualityCheckItem}
-                      onPress={() => openQualityCheckModal(checkName, checkStatus)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={installationStyles.qualityIconContainer}>
-                        <Ionicons
-                          name={checkStatus.toLowerCase() === 'passed' ? 'checkmark-circle' : 'close-circle'}
-                          size={20}
-                          color={checkStatus.toLowerCase() === 'passed' ? '#4CAF50' : '#F44336'}
-                        />
-                      </View>
-                      <View style={installationStyles.qualityCheckContent}>
-                        <Text style={installationStyles.qualityCheckName}>
-                          {checkName.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).trim()}
-                        </Text>
-                        <View style={[
-                          installationStyles.qualityStatusBadge,
-                          checkStatus.toLowerCase() === 'passed' && installationStyles.passedBadge,
-                          checkStatus.toLowerCase() === 'failed' && installationStyles.failedBadge
-                        ]}>
-                          <Text style={installationStyles.qualityStatusText}>{checkStatus}</Text>
+                  return Object.entries(checks || {}).map(([checkName, checkStatus]) => {
+                    const isCompleted = checkStatus.toLowerCase() === 'passed' || checkStatus.toLowerCase() === 'failed';
+                    const canModify = canUpdateQualityChecks && !isCompleted;
+
+                    return (
+                      <TouchableOpacity
+                        key={checkName}
+                        style={[
+                          installationStyles.qualityCheckItem,
+                          !canModify && installationStyles.disabledItem
+                        ]}
+                        onPress={() => canModify && openQualityCheckModal(checkName, checkStatus)}
+                        activeOpacity={canModify ? 0.7 : 1}
+                        disabled={!canModify}
+                      >
+                        <View style={installationStyles.qualityIconContainer}>
+                          <Ionicons
+                            name={checkStatus.toLowerCase() === 'passed' ? 'checkmark-circle' : checkStatus.toLowerCase() === 'failed' ? 'close-circle' : 'help-circle'}
+                            size={20}
+                            color={checkStatus.toLowerCase() === 'passed' ? '#4CAF50' : checkStatus.toLowerCase() === 'failed' ? '#F44336' : Colors.dark.icon}
+                          />
+                          {isCompleted && (
+                            <View style={installationStyles.lockIcon}>
+                              <Ionicons name="lock-closed" size={12} color={Colors.dark.icon} />
+                            </View>
+                          )}
                         </View>
-                      </View>
-                      <View style={installationStyles.qualityArrowContainer}>
-                        <Ionicons name="chevron-forward" size={20} color={Colors.dark.icon} />
-                      </View>
-                    </TouchableOpacity>
-                  ));
+                        <View style={installationStyles.qualityCheckContent}>
+                          <Text style={installationStyles.qualityCheckName}>
+                            {checkName.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).trim()}
+                          </Text>
+                          <View style={[
+                            installationStyles.qualityStatusBadge,
+                            checkStatus.toLowerCase() === 'passed' && installationStyles.passedBadge,
+                            checkStatus.toLowerCase() === 'failed' && installationStyles.failedBadge
+                          ]}>
+                            <Text style={installationStyles.qualityStatusText}>
+                              {checkStatus}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={installationStyles.qualityArrowContainer}>
+                          <Ionicons name="chevron-forward" size={20} color={Colors.dark.icon} />
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  });
                 })() : (
                   <View style={installationStyles.emptySection}>
                     <Ionicons name="shield-checkmark" size={32} color={Colors.dark.icon} />
@@ -527,11 +556,32 @@ const installationStyles = {
   modalScrollContent: {
     padding: 16,
   },
+  sectionHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    marginBottom: 16,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold' as const,
     color: Colors.dark.text,
-    marginBottom: 16,
+  },
+  permissionBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: Colors.dark.background,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  permissionText: {
+    fontSize: 10,
+    color: Colors.dark.icon,
+    fontWeight: '500' as const,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
   },
   viewPlanModalContainer: {
     backgroundColor: Colors.dark.card,
@@ -697,6 +747,9 @@ const installationStyles = {
     shadowRadius: 2,
     elevation: 1,
   },
+  disabledItem: {
+    opacity: 0.6,
+  },
   qualityIconContainer: {
     width: 36,
     height: 36,
@@ -705,6 +758,14 @@ const installationStyles = {
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     marginRight: 12,
+  },
+  lockIcon: {
+    position: 'absolute' as const,
+    top: -2,
+    right: -2,
+    backgroundColor: Colors.dark.card,
+    borderRadius: 6,
+    padding: 2,
   },
   qualityCheckContent: {
     flex: 1,
