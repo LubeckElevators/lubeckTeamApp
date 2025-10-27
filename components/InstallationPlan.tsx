@@ -51,7 +51,7 @@ const InstallationPlan: React.FC<InstallationPlanProps> = ({
   const [selectedQualityCheck, setSelectedQualityCheck] = useState<{ name: string; currentStatus: string } | null>(null);
 
   // Check if user has permission to update quality checks
-  const canUpdateQualityChecks = userProfile?.role?.toLowerCase() === 'quality check mechanic';
+  const canUpdateQualityChecks = userProfile?.role === 'quality_check_mechanic';
   // Get current date in YYYY-MM-DD format
   const getCurrentDate = () => {
     const today = new Date();
